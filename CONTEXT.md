@@ -21,7 +21,7 @@ Cuánto dura una escena, siempre más que cero. En una imagen, es cuánto se mue
 _Avoid_: largo, tiempo
 
 **Recorte**:
-El tramo de un video que usa una escena. Va de la entrada a la salida, y ese largo es la duración de la escena.
+El tramo de un video que usa una escena. Va de la entrada a la salida, sin pasar del final del archivo, y ese largo es la duración de la escena.
 _Avoid_: trim, corte
 
 **Texto**:
@@ -32,21 +32,33 @@ _Avoid_: título, subtítulo, caption
 El video ya renderizado, vertical, listo para ver en el celular.
 _Avoid_: video, proyecto, reel
 
+**Cuadro**:
+El rectángulo vertical del short, donde se ven el medio visual y los textos.
+_Avoid_: lienzo, frame, pantalla
+
 **Biblioteca**:
 El conjunto de medios de un usuario. Cualquier proyecto de ese usuario puede usarlos.
 _Avoid_: galería, assets
 
 **Medio**:
-Un video, una imagen o un audio de la biblioteca. Cada incorporación crea uno, y conserva el nombre con el que entró.
+Un video, una imagen o un audio de la biblioteca. Un GIF cuenta como video. Cada incorporación crea uno, y conserva el nombre con el que entró.
 _Avoid_: archivo, asset, clip
 
 **Medio visual**:
-La imagen o el video de una escena. Es un medio de la biblioteca.
+La imagen o el video de una escena. Es un medio de la biblioteca. Un GIF es un video. El sonido del archivo no se oye en el short.
 _Avoid_: clip, asset
+
+**Encaje**:
+Cómo el medio visual ocupa el cuadro: lo llena por completo y lo que no cabe queda fuera, centrado. Una imagen y un video usan el mismo.
+_Avoid_: object-fit, cover, bandas, recorte
 
 **Editor**:
 La herramienta con la que una persona modifica un proyecto a mano.
 _Avoid_: motor, generador
+
+**Modo**:
+Una superficie de trabajo del editor. Se muestra una por vez: la biblioteca, las escenas, la escena elegida o la apariencia.
+_Avoid_: pestaña, vista, pantalla
 
 **Apariencia**:
 Los valores del feeling de la aplicación en este navegador: tamaño de la tipografía, color del texto, color de fondo, y tamaño de los iconos y de los elementos de las barras y de las secciones. El color del texto pinta la letra, los iconos y el texto de los elementos; el color de fondo pinta las barras, las secciones y los elementos.

@@ -1,0 +1,665 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Prototipo — Cómo se ve el editor</title>
+<!--
+  Three variants of the editor layout, switchable via ?variant=,
+  on a throwaway page. The repo has no editor page to host them.
+  A — Mesa de corte. B — Documento. C — Un modo por vez.
+  PROTOTIPO. No es el editor.
+-->
+<style>
+  :root {
+    --text: #1a1a1a;
+    --bg: #f7f7f5;
+    --font: 16px;
+    --bar-icon: 20px;
+    --bar-control: 36px;
+    --section-icon: 20px;
+    --section-control: 36px;
+  }
+  * { box-sizing: border-box; }
+  html, body, #app { height: 100%; margin: 0; }
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: system-ui, sans-serif;
+    font-size: var(--font);
+    line-height: 1.35;
+  }
+  button, input, select, textarea {
+    font: inherit;
+    color: var(--text);
+    background: var(--bg);
+    border: 1px solid var(--text);
+    border-radius: 0;
+    height: var(--section-control);
+    padding: 0 10px;
+  }
+  textarea { height: auto; padding: 8px 10px; }
+  button { cursor: pointer; display: inline-flex; align-items: center; gap: 8px; }
+  button:hover, button:focus-visible,
+  input:hover, input:focus-visible,
+  select:hover, select:focus-visible,
+  textarea:hover, textarea:focus-visible,
+  .is-selected {
+    background: var(--text);
+    color: var(--bg);
+  }
+  button:disabled { opacity: 0.4; cursor: default; }
+  .icon { width: var(--section-icon); height: var(--section-icon); flex: none; }
+  .bar .icon { width: var(--bar-icon); height: var(--bar-icon); }
+  .bar button, .bar select, .bar input { height: var(--bar-control); }
+  h1, h2, p { margin: 0; font-weight: 500; }
+  h1 { font-size: 1em; }
+  h2 { font-size: 0.85em; letter-spacing: 0.04em; text-transform: uppercase; }
+  .stack { display: flex; flex-direction: column; gap: 10px; min-height: 0; }
+  .row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+  .grow { flex: 1; min-width: 0; }
+  .scroll { overflow: auto; min-height: 0; }
+  .rule { border-top: 1px solid var(--text); }
+  .notice { min-height: 1.35em; }
+  .meta { opacity: 0.75; }
+  .supuesto { font-size: 0.85em; }
+  .phone {
+    container-type: size;
+    position: relative;
+    aspect-ratio: 9 / 16;
+    background-size: cover;
+    background-position: center;
+    overflow: hidden;
+    border: 1px solid var(--text);
+  }
+  .phone span.tx {
+    position: absolute;
+    transform: translate(-50%, -50%);
+    margin: 0;
+    line-height: 1.1;
+    font-size: calc(var(--ts) * 100cqh);
+    max-width: 90%;
+  }
+  .layout { height: 100%; padding-bottom: 76px; }
+  .layout .bar, .layout .section { background: var(--bg); }
+  .a {
+    display: grid;
+    grid-template-rows: auto minmax(0, 1fr) 132px;
+    height: 100%;
+    overflow: hidden;
+  }
+  .a-main { display: grid; grid-template-columns: 280px 1fr 340px; min-height: 0; }
+  .a-preview { display: grid; place-items: center; padding: 16px; }
+  .a-preview .phone { height: 100%; width: auto; max-height: 100%; }
+  .a .section, .b .section, .c .section { padding: 12px; border-right: 1px solid var(--text); }
+  .a-strip { display: flex; gap: 8px; align-items: stretch; padding: 10px 12px; border-top: 1px solid var(--text); overflow: auto; }
+  .thumb { width: 196px; flex: none; display: grid; grid-template-columns: 52px 1fr; gap: 8px; align-items: center; }
+  .thumb .phone { width: 52px; }
+  .thumb button { height: 32px; padding: 0 8px; }
+  .b { display: grid; grid-template-rows: auto auto 1fr; height: 100%; }
+  .b-feel { display: flex; gap: 16px; overflow: auto; padding: 8px 12px; border-bottom: 1px solid var(--text); align-items: end; }
+  .b-main { display: grid; grid-template-columns: 320px 1fr 280px; min-height: 0; }
+  .b-doc { display: flex; flex-direction: column; gap: 0; }
+  .b-scene, .b-cut { padding: 8px 0; border-bottom: 1px solid var(--text); }
+  .b-form { display: grid; grid-template-columns: 200px 1fr; gap: 16px; align-items: start; }
+  .b-form .phone { width: 200px; }
+  .c { display: grid; grid-template-rows: auto 1fr; height: 100%; }
+  .c-modes { display: flex; gap: 8px; padding: 10px 12px; border-bottom: 1px solid var(--text); }
+  .c-body { min-height: 0; }
+  .c-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 12px; padding: 16px; }
+  .c-escena { display: grid; grid-template-columns: minmax(220px, 380px) 1fr; gap: 20px; padding: 16px; align-items: start; }
+  .c-list { display: flex; flex-direction: column; }
+  .c-list article { display: grid; grid-template-columns: 72px 1fr auto; gap: 12px; align-items: center; padding: 12px; border-bottom: 1px solid var(--text); }
+  .panel { display: flex; flex-direction: column; gap: 12px; }
+  .field { display: flex; flex-direction: column; gap: 4px; min-width: 140px; }
+  .field input[type="range"] { padding: 0; border: 0; height: 24px; background: transparent; }
+  .field input[type="range"]:hover, .field input[type="range"]:focus-visible { background: transparent; color: var(--text); }
+  .lib-item, .text-card { padding: 8px 0; border-bottom: 1px solid var(--text); display: flex; flex-direction: column; gap: 6px; }
+  .swatch { width: 100%; height: 72px; background-size: cover; background-position: center; border: 1px solid var(--text); }
+  #switcher {
+    position: fixed; left: 50%; bottom: 14px; transform: translateX(-50%);
+    z-index: 20; display: flex; align-items: center; gap: 8px;
+    background: #111; color: #f5f5f5; padding: 8px 10px; border-radius: 999px;
+    box-shadow: 0 8px 24px rgba(0,0,0,.35); font-family: system-ui, sans-serif; font-size: 14px;
+  }
+  #switcher button {
+    background: transparent; color: #f5f5f5; border: 1px solid #f5f5f5;
+    height: 32px; width: 32px; padding: 0; justify-content: center; border-radius: 999px;
+  }
+  #switcher button:hover, #switcher button:focus-visible { background: #f5f5f5; color: #111; }
+  #switcher .wide { width: auto; padding: 0 10px; border-radius: 999px; }
+  #statebox {
+    position: fixed; top: 12px; left: 12px; z-index: 20; width: min(420px, calc(100vw - 24px));
+    max-height: 46vh; overflow: auto; background: #111; color: #d8d8d8;
+    font: 12px/1.4 ui-monospace, monospace; padding: 10px 12px; border-radius: 12px;
+  }
+  #statebox[hidden] { display: none; }
+</style>
+</head>
+<body>
+<div id="app"></div>
+<pre id="statebox" hidden></pre>
+<div id="switcher"></div>
+<script>
+const INITIAL = {
+  font: 16, text: "#1a1a1a", bg: "#f7f7f5",
+  barIcon: 20, barControl: 36, sectionIcon: 20, sectionControl: 36
+};
+const VARIANTS = [
+  { key: "A", name: "Mesa de corte" },
+  { key: "B", name: "Documento" },
+  { key: "C", name: "Un modo por vez" }
+];
+const LOOK = {
+  "ola.mp3": "linear-gradient(90deg,#9bd1e5,#d8f3dc)",
+  "playa.gif": "linear-gradient(90deg,#f6d365,#fda085 40%,#86e3ce)",
+  "ciudad.mp4": "linear-gradient(160deg,#1b2440,#c45c26 55%,#e7c07b)",
+  "cielo.jpg": "linear-gradient(180deg,#7ec8ff,#fff4c2)",
+  "voz.mp3": "linear-gradient(90deg,#d9d4cf,#8d99ae)",
+  "calle.mp4": "linear-gradient(180deg,#2c2c2c,#8a8f86 70%,#d6c7a1)"
+};
+
+let seq = 20;
+const ui = { appearanceOpen: false, stateOpen: false, mode: "escena" };
+const state = {
+  notice: "",
+  selectedId: "s1",
+  appearance: { ...INITIAL },
+  library: [
+    { id: "m1", name: "ola.mp3", kind: "audio" },
+    { id: "m2", name: "playa.gif", kind: "video", fileSeconds: 2, gif: true },
+    { id: "m3", name: "ciudad.mp4", kind: "video", fileSeconds: 12 },
+    { id: "m4", name: "cielo.jpg", kind: "image" },
+    { id: "m5", name: "voz.mp3", kind: "audio" },
+    { id: "m6", name: "calle.mp4", kind: "video", fileSeconds: 8 }
+  ],
+  scenes: [
+    { id: "s1", mediumId: "m4", duration: 3, narrationId: "m5", texts: [
+      { id: "t1", content: "Amanece", x: 0.5, y: 0.22, size: 0.08, color: "#1a1a1a", align: "center" }
+    ]},
+    { id: "s2", mediumId: "m3", duration: 3, narrationId: null, texts: [] },
+    { id: "s3", mediumId: "m6", duration: 4, narrationId: null, texts: [
+      { id: "t2", content: "Seguimos", x: 0.5, y: 0.78, size: 0.08, color: "#ffffff", align: "center" }
+    ]}
+  ],
+  cuts: [
+    { fromId: "s1", toId: "s2", type: "fade", seconds: 0.5 },
+    { fromId: "s2", toId: "s3", type: "cut" }
+  ]
+};
+
+const $ = (id) => state.library.find((m) => m.id === id) || state.scenes.find((s) => s.id === id);
+const medium = (id) => state.library.find((m) => m.id === id);
+const scene = (id) => state.scenes.find((s) => s.id === id);
+const nid = (p) => p + (++seq);
+const esc = (s) => String(s).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+const secs = (n) => (Math.round(n * 10) / 10).toString().replace(".", ",") + " s";
+const kindLabel = (m) => m.gif ? "Video · GIF" : m.kind === "video" ? "Video" : m.kind === "image" ? "Imagen" : "Audio";
+const visuals = () => state.library.filter((m) => m.kind !== "audio");
+const audios = () => state.library.filter((m) => m.kind === "audio");
+
+function variantKey() {
+  const key = new URLSearchParams(location.search).get("variant");
+  return VARIANTS.some((v) => v.key === key) ? key : "A";
+}
+function setVariant(key) {
+  const url = new URL(location.href);
+  url.searchParams.set("variant", key);
+  history.replaceState(null, "", url);
+  render();
+}
+function say(message) { state.notice = message; }
+function selected() { return scene(state.selectedId) || state.scenes[0] || null; }
+
+function shortSeconds() {
+  let total = state.scenes.reduce((n, s) => n + s.duration, 0);
+  for (let i = 0; i < state.scenes.length - 1; i++) {
+    const cut = cutBetween(state.scenes[i].id, state.scenes[i + 1].id);
+    if (cut && cut.type === "fade") total -= cut.seconds;
+  }
+  return total;
+}
+function cutBetween(fromId, toId) {
+  return state.cuts.find((c) => c.fromId === fromId && c.toId === toId);
+}
+function reconcileCuts() {
+  const next = [];
+  for (let i = 0; i < state.scenes.length - 1; i++) {
+    const fromId = state.scenes[i].id;
+    const toId = state.scenes[i + 1].id;
+    next.push(cutBetween(fromId, toId) || { fromId, toId, type: "cut" });
+  }
+  state.cuts = next;
+}
+function shrinkFades(sceneId) {
+  let shrank = false;
+  state.cuts.forEach((cut) => {
+    if (cut.type !== "fade") return;
+    if (cut.fromId !== sceneId && cut.toId !== sceneId) return;
+    const cap = Math.min(scene(cut.fromId).duration, scene(cut.toId).duration);
+    if (cut.seconds > cap) { cut.seconds = cap; shrank = true; }
+  });
+  return shrank;
+}
+
+function addScene(mediumId) {
+  const m = medium(mediumId);
+  if (!m || m.kind === "audio") { say("Elegí una imagen o un video."); return; }
+  if (m.kind === "video" && !(m.fileSeconds > 0)) { say("Ese video no tiene duración. No se añadió la escena."); return; }
+  const duration = m.kind === "image" ? 3 : Math.min(3, m.fileSeconds);
+  const prev = state.scenes[state.scenes.length - 1];
+  const born = { id: nid("s"), mediumId, duration, narrationId: null, texts: [] };
+  state.scenes.push(born);
+  if (prev) state.cuts.push({ fromId: prev.id, toId: born.id, type: "cut" });
+  state.selectedId = born.id;
+  ui.mode = "escena";
+  say(m.kind === "video" && m.fileSeconds < 3
+    ? "La escena nació al final, en el largo del archivo (" + secs(duration) + "), sin textos ni narración. El corte nuevo es corte directo."
+    : "La escena nació al final, en tres segundos, sin textos ni narración. El corte nuevo es corte directo.");
+}
+function deleteScene(id) {
+  const index = state.scenes.findIndex((s) => s.id === id);
+  if (index < 0) return;
+  state.scenes.splice(index, 1);
+  reconcileCuts();
+  const neighbor = state.scenes[Math.min(index, state.scenes.length - 1)];
+  state.selectedId = neighbor ? neighbor.id : null;
+  say(state.scenes.length ? "La escena salió. El medio sigue en la biblioteca. El corte nuevo, si lo hay, es corte directo." : "El proyecto quedó sin escenas.");
+}
+function moveScene(id, dir) {
+  const index = state.scenes.findIndex((s) => s.id === id);
+  const next = index + dir;
+  if (index < 0 || next < 0 || next >= state.scenes.length) return;
+  const [row] = state.scenes.splice(index, 1);
+  state.scenes.splice(next, 0, row);
+  reconcileCuts();
+  say("El corte se conserva solo si esas dos escenas siguen juntas y en el mismo orden. Lo demás nace en corte directo.");
+}
+function replaceMedium(sceneId, mediumId) {
+  const s = scene(sceneId);
+  const m = medium(mediumId);
+  if (!s || !m || m.kind === "audio") return;
+  if (s.mediumId === mediumId) { say("Elegir el mismo medio no cambia nada."); return; }
+  if (m.kind === "video" && !(m.fileSeconds > 0)) { say("Ese video no tiene duración. La escena quedó como estaba."); return; }
+  s.mediumId = mediumId;
+  if (m.kind === "video" && m.fileSeconds < s.duration) {
+    s.duration = m.fileSeconds;
+    const shrank = shrinkFades(s.id);
+    say("El video entra desde el inicio y la escena quedó en el largo del archivo." + (shrank ? " El fundido que no cabía bajó." : ""));
+    return;
+  }
+  say(m.kind === "image"
+    ? "La imagen conserva la duración. Textos, narración y cortes siguen."
+    : "El video entra desde el inicio, con la duración que la escena ya tenía. Textos, narración y cortes siguen.");
+}
+function setDuration(sceneId, requested) {
+  const s = scene(sceneId);
+  if (!s) return;
+  if (!(requested > 0)) { say("La duración tiene que ser mayor que cero. No cambió."); return; }
+  const m = medium(s.mediumId);
+  if (m.kind === "video" && requested > m.fileSeconds) { say("El archivo no alcanza. La duración no cambió."); return; }
+  s.duration = requested;
+  const shrank = shrinkFades(s.id);
+  say(shrank ? "La duración cambió. El fundido que no cabía bajó, y alargar después no lo restaura." : "La duración cambió. En un video, la salida se movió y la entrada sigue al inicio.");
+}
+function setTransition(fromId, toId, type) {
+  const cut = cutBetween(fromId, toId);
+  if (!cut) return;
+  if (type === "cut") { cut.type = "cut"; delete cut.seconds; say("Volver a corte directo olvida el tiempo del fundido."); return; }
+  const cap = Math.min(scene(fromId).duration, scene(toId).duration);
+  cut.type = "fade";
+  cut.seconds = Math.min(0.5, cap);
+  say(cap < 0.5 ? "El fundido nació en el largo de la escena más corta." : "El fundido nació en medio segundo.");
+}
+function setFadeTime(fromId, toId, requested) {
+  const cut = cutBetween(fromId, toId);
+  if (!cut || cut.type !== "fade") return;
+  if (!(requested > 0)) { say("Cero no es un fundido: eso es un corte directo. El tiempo anterior sigue."); return; }
+  const cap = Math.min(scene(fromId).duration, scene(toId).duration);
+  if (requested > cap) { say("Ese tiempo no cabe en la escena más corta. El tiempo anterior sigue."); return; }
+  cut.seconds = requested;
+  say("El fundido dura " + secs(requested) + ". Las dos escenas se solapan y el short se acorta.");
+}
+function setNarration(sceneId, audioId) {
+  const s = scene(sceneId);
+  if (!s) return;
+  s.narrationId = audioId || null;
+  say(audioId ? "La narración queda en esta escena y termina con ella." : "La escena quedó sin narración. El audio sigue en la biblioteca.");
+}
+function addText(sceneId) {
+  const s = scene(sceneId);
+  if (!s) return;
+  s.texts.push({ id: nid("t"), content: "Texto", x: 0.5, y: 0.5, size: 0.08, color: "#ffffff", align: "center" });
+  say("El texto nace al centro, en blanco, y dura la escena entera. El último de la lista se dibuja arriba.");
+}
+function patchText(sceneId, textId, patch) {
+  const text = scene(sceneId).texts.find((t) => t.id === textId);
+  Object.assign(text, patch);
+  say("El texto sigue ocupando la escena entera.");
+}
+function moveText(sceneId, textId, dir) {
+  const texts = scene(sceneId).texts;
+  const index = texts.findIndex((t) => t.id === textId);
+  const next = index + dir;
+  if (next < 0 || next >= texts.length) return;
+  const [row] = texts.splice(index, 1);
+  texts.splice(next, 0, row);
+  say("El orden de la lista es el apilado: el último se dibuja arriba.");
+}
+function deleteText(sceneId, textId) {
+  const s = scene(sceneId);
+  s.texts = s.texts.filter((t) => t.id !== textId);
+  say("El texto salió de la escena.");
+}
+function removeMedium(id) {
+  const used = state.scenes.some((s) => s.mediumId === id || s.narrationId === id);
+  if (used) { say("Alguna escena lo usa. La biblioteca y los proyectos quedaron igual."); return; }
+  state.library = state.library.filter((m) => m.id !== id);
+  say("El medio salió de la biblioteca.");
+}
+function incorporate(name, kind, fileSeconds) {
+  const clean = name.trim().split(/[/\\]/).pop();
+  if (!clean) { say("Falta el nombre del archivo."); return; }
+  if (!["image", "video", "audio"].includes(kind)) { say("Ese archivo no es video, imagen ni audio. La biblioteca quedó como estaba."); return; }
+  const gif = /\.gif$/i.test(clean);
+  const finalKind = gif ? "video" : kind;
+  if (finalKind === "video" && !(fileSeconds > 0)) { say("Ese video no tiene duración. No se creó el medio."); return; }
+  state.library.unshift({
+    id: nid("m"),
+    name: clean,
+    kind: finalKind,
+    gif,
+    fileSeconds: finalKind === "video" ? fileSeconds : undefined
+  });
+  say(gif && kind !== "video" ? "Un GIF entra como video. Quedó primero en la lista." : "El medio quedó primero en la lista, con el nombre del archivo.");
+}
+
+function icon(name) {
+  const paths = {
+    plus: '<path d="M12 5v14M5 12h14"/>',
+    up: '<path d="M6 14l6-6 6 6"/>',
+    down: '<path d="M6 10l6 6 6-6"/>',
+    trash: '<path d="M5 7h14M9 7V5h6v2M8 7l1 12h6l1-12"/>'
+  };
+  return '<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">' + paths[name] + "</svg>";
+}
+function btn(act, label, extra, glyph, iconOnly) {
+  const attrs = Object.entries(extra || {}).map(([k, v]) => " data-" + k + '="' + esc(v) + '"').join("");
+  const face = (glyph ? icon(glyph) : "") + (iconOnly ? "" : (glyph ? " " : "") + esc(label));
+  return '<button type="button" data-act="' + act + '" aria-label="' + esc(label) + '"' + attrs + ">" + face + "</button>";
+}
+function phone(s) {
+  if (!s) return '<div class="phone" style="background:#bbb"></div>';
+  const m = medium(s.mediumId);
+  const texts = s.texts.map((t, index) => {
+    const align = t.align === "left" ? "left" : t.align === "right" ? "right" : "center";
+    return '<span class="tx" style="left:' + (t.x * 100) + "%;top:" + (t.y * 100) + "%;color:" + esc(t.color) + ";text-align:" + align + ";--ts:" + t.size + ";z-index:" + (index + 1) + '">' + esc(t.content) + "</span>";
+  }).join("");
+  return '<div class="phone" style="background-image:' + (LOOK[m.name] || "linear-gradient(#888,#ccc)") + '">' + texts + "</div>";
+}
+function caption(s) {
+  if (!s) return "<p>El proyecto no tiene escenas.</p>";
+  const m = medium(s.mediumId);
+  const fit = "<p>Encaje: llena el cuadro, centrado.</p>";
+  const audio = m.kind === "video" ? "<p>La pista del video no se oye.</p>" : "";
+  const time = m.kind === "video"
+    ? "<p>Recorte: entrada al inicio, salida a los " + secs(s.duration) + ". El archivo dura " + secs(m.fileSeconds) + ".</p>"
+    : "<p>Se muestra " + secs(s.duration) + ".</p>";
+  return fit + audio + time;
+}
+function notice() { return '<p class="notice">' + esc(state.notice) + "</p>"; }
+function bar(withMenu) {
+  const name = "Amanece en la ciudad";
+  const menu = withMenu === false ? "" : btn("toggle-appearance", ui.appearanceOpen ? "Cerrar apariencia" : "Apariencia");
+  return '<header class="bar row" style="padding:10px 12px;border-bottom:1px solid var(--text)">' +
+    "<div class='grow'><h1>" + name + "</h1><p class='meta'>El short dura " + secs(shortSeconds()) + "</p></div>" +
+    menu + "</header>";
+}
+function appearanceFields() {
+  const a = state.appearance;
+  const size = (key, label) => '<label class="field"><span>' + label + '</span><span class="row"><input type="range" min="8" max="96" step="1" data-appear="' + key + '" value="' + a[key] + '"><output>' + a[key] + " px</output></span></label>";
+  const color = (key, label) => '<label class="field"><span>' + label + '</span><input type="color" data-appear="' + key + '" value="' + a[key] + '"></label>';
+  return "<div class='panel'><h2>Interfaz</h2><div class='row'>" +
+    size("font", "Tipografía") + color("text", "Color del texto") + color("bg", "Color de fondo") +
+    "</div><h2>Barras</h2><div class='row'>" + size("barIcon", "Iconos") + size("barControl", "Elementos") +
+    "</div><h2>Secciones</h2><div class='row'>" + size("sectionIcon", "Iconos") + size("sectionControl", "Elementos") +
+    "</div>" + btn("reset-appearance", "Restablecer") + "</div>";
+}
+function libraryBlock() {
+  const items = state.library.map((m) => {
+    const used = state.scenes.some((s) => s.mediumId === m.id || s.narrationId === m.id);
+    const detail = m.kind === "video" ? " · archivo " + secs(m.fileSeconds) : "";
+    return "<div class='lib-item" + (selected() && selected().mediumId === m.id ? " is-selected" : "") + "'><div class='swatch' style='background-image:" + (LOOK[m.name] || "none") + "'></div><strong>" + esc(m.name) + "</strong><span class='meta'>" + kindLabel(m) + detail + (used ? " · en uso" : "") + "</span><div class='row'>" +
+      (m.kind !== "audio" ? btn("add-scene", "Añadir escena", { medium: m.id }, "plus") + btn("replace", "Reemplazar en la escena", { medium: m.id }) : btn("narrate", "Poner como narración", { medium: m.id })) +
+      btn("remove-medium", "Quitar", { medium: m.id }, "trash") + "</div></div>";
+  }).join("");
+  return "<div class='stack scroll'><h2>Biblioteca</h2>" +
+    "<form class='stack' data-act='incorporate'><div class='row'><input name='name' placeholder='nombre del archivo' aria-label='Nombre del archivo'><select name='kind' aria-label='Clase'><option value='image'>Imagen</option><option value='video'>Video</option><option value='audio'>Audio</option><option value='other'>Otro</option></select><input name='seconds' type='number' min='0' step='0.1' value='5' aria-label='Duración del archivo, si es video' style='width:90px'><button type='submit'>Incorporar</button></div><p class='meta'>El más reciente queda primero. Dos medios pueden llamarse igual.</p></form>" +
+    items + "</div>";
+}
+function textCards(s) {
+  if (!s) return "";
+  const cards = s.texts.map((t, index) => "<div class='text-card'><div class='row'><strong>Texto " + (index + 1) + "</strong>" +
+    btn("text-move", "Más atrás", { scene: s.id, text: t.id, dir: "-1" }) +
+    btn("text-move", "Más adelante", { scene: s.id, text: t.id, dir: "1" }) +
+    btn("text-delete", "Quitar", { scene: s.id, text: t.id }, "trash") + "</div>" +
+    "<textarea data-change='text' data-scene='" + s.id + "' data-text='" + t.id + "' data-key='content' aria-label='Contenido'>" + esc(t.content) + "</textarea>" +
+    "<div class='row'><label>Horizontal <input data-change='text' data-scene='" + s.id + "' data-text='" + t.id + "' data-key='x' type='number' min='0' max='1' step='0.01' value='" + t.x + "'></label>" +
+    "<label>Vertical <input data-change='text' data-scene='" + s.id + "' data-text='" + t.id + "' data-key='y' type='number' min='0' max='1' step='0.01' value='" + t.y + "'></label>" +
+    "<label>Tamaño <input data-change='text' data-scene='" + s.id + "' data-text='" + t.id + "' data-key='size' type='number' min='0.02' max='0.4' step='0.01' value='" + t.size + "'></label>" +
+    "<label>Color <input data-change='text' data-scene='" + s.id + "' data-text='" + t.id + "' data-key='color' type='color' value='" + t.color + "'></label>" +
+    "<label>Alineación <select data-change='text' data-scene='" + s.id + "' data-text='" + t.id + "' data-key='align'>" +
+    ["left", "center", "right"].map((value) => "<option value='" + value + "'" + (t.align === value ? " selected" : "") + ">" + (value === "left" ? "Izquierda" : value === "right" ? "Derecha" : "Centro") + "</option>").join("") +
+    "</select></label></div><p class='meta'>Dura la escena entera. La posición es el centro del bloque.</p></div>").join("");
+  return "<div class='stack'><div class='row'><h2>Textos</h2>" + btn("add-text", "Añadir texto", { scene: s.id }, "plus") + "</div>" + (cards || "<p class='meta'>Esta escena no tiene textos.</p>") + "</div>";
+}
+function narrationBlock(s) {
+  if (!s) return "";
+  const options = "<option value=''>Sin narración</option>" + audios().map((m) => "<option value='" + m.id + "'" + (s.narrationId === m.id ? " selected" : "") + ">" + esc(m.name) + "</option>").join("");
+  return "<label class='field'><span>Narración</span><select data-change='narration' data-scene='" + s.id + "'>" + options + "</select><span class='supuesto'>Supuesto: suena toda la escena, desde el inicio, a volumen pleno. El volumen, un audio más corto y el punto de inicio siguen abiertos.</span></label>";
+}
+function durationBlock(s) {
+  if (!s) return "";
+  const m = medium(s.mediumId);
+  return "<label class='field'><span>Duración</span><input data-change='duration' data-scene='" + s.id + "' type='number' min='0.1' step='0.1' value='" + s.duration + "'><span class='meta'>" + (m.kind === "video" ? "Moverla mueve la salida. No pasa del archivo." : "Es cuánto se muestra la imagen.") + "</span></label>";
+}
+function transitionBlock(s) {
+  const index = state.scenes.findIndex((item) => item.id === s.id);
+  if (index < 0 || index === state.scenes.length - 1) return "<p>No hay una escena después. Este puesto no tiene corte.</p>";
+  const next = state.scenes[index + 1];
+  const cut = cutBetween(s.id, next.id);
+  const fade = cut.type === "fade";
+  return "<div class='stack'><h2>Corte con la siguiente</h2><div class='row'><select data-change='transition' data-from='" + s.id + "' data-to='" + next.id + "'>" +
+    "<option value='cut'" + (!fade ? " selected" : "") + ">Corte directo</option><option value='fade'" + (fade ? " selected" : "") + ">Fundido</option></select>" +
+    (fade ? "<label>Tiempo <input data-change='fade' data-from='" + s.id + "' data-to='" + next.id + "' type='number' min='0.1' step='0.1' value='" + cut.seconds + "'> s</label>" : "") +
+    "</div><p class='meta'>" + (fade ? "Durante el fundido las dos escenas se solapan y el short se acorta." : "El corte directo no ocupa tiempo.") + "</p></div>";
+}
+function sceneForm(s, withCut) {
+  if (!s) return "<p>Elegí una escena, o añadí una desde la biblioteca.</p>";
+  const m = medium(s.mediumId);
+  return "<div class='stack'>" + caption(s) + "<p><strong>" + esc(m.name) + "</strong> · " + kindLabel(m) + "</p>" +
+    durationBlock(s) + narrationBlock(s) + (withCut === false ? "" : transitionBlock(s)) + textCards(s) + "</div>";
+}
+function addControl() {
+  const options = visuals();
+  if (!options.length) return "<p>No hay una imagen o un video en la biblioteca. No se puede añadir.</p>";
+  return "<form class='row' data-act='add-from-select'><select name='medium' aria-label='Medio de la escena nueva'>" + options.map((m) => "<option value='" + m.id + "'>" + esc(m.name) + "</option>").join("") + "</select><button type='submit'>Añadir al final</button></form>";
+}
+function sceneButtons(s) {
+  return "<div class='row'>" + btn("select", "Elegir", { scene: s.id }) + btn("move", "Subir", { scene: s.id, dir: "-1" }, "up") + btn("move", "Bajar", { scene: s.id, dir: "1" }, "down") + btn("delete-scene", "Eliminar", { scene: s.id }, "trash") + "</div>";
+}
+
+function variantA() {
+  const s = selected();
+  const strip = state.scenes.map((item) => {
+    const cutIndex = state.scenes.findIndex((candidate) => candidate.id === item.id);
+    const later = state.scenes[cutIndex + 1];
+    const cut = later ? cutBetween(item.id, later.id) : null;
+    const actions = "<div class='row'>" + btn("move", "Subir", { scene: item.id, dir: "-1" }, "up", true) + btn("move", "Bajar", { scene: item.id, dir: "1" }, "down", true) + btn("delete-scene", "Eliminar", { scene: item.id }, "trash", true) + "</div>";
+    return "<div class='thumb " + (s && s.id === item.id ? "is-selected" : "") + "'><button type='button' data-act='select' data-scene='" + item.id + "' style='height:auto;padding:0;border:0'>" + phone(item) + "</button><div class='stack'><strong>Escena " + (cutIndex + 1) + "</strong><span class='meta'>" + secs(item.duration) + (cut ? " · " + (cut.type === "fade" ? "fundido" : "corte") : "") + "</span>" + actions + "</div></div>";
+  }).join("");
+  return "<div class='layout a'>" + bar() + "<div class='a-main'>" +
+    "<section class='section scroll'>" + libraryBlock() + "</section>" +
+    "<section class='section a-preview stack'>" + (s ? phone(s) : "") + notice() + "</section>" +
+    "<section class='section scroll'>" + (ui.appearanceOpen ? appearanceFields() : sceneForm(s)) + "</section></div>" +
+    "<div class='a-strip bar'>" + strip + addControl() + "</div></div>";
+}
+function variantB() {
+  const s = selected();
+  const doc = state.scenes.map((item, index) => {
+    const later = state.scenes[index + 1];
+    const cut = later ? cutBetween(item.id, later.id) : null;
+    const cutRow = later ? "<div class='b-cut'><p class='meta'>Corte</p>" + transitionBlock(item) + "</div>" : "";
+    return "<div class='b-scene " + (s && s.id === item.id ? "is-selected" : "") + "'><div class='row'><strong>Escena " + (index + 1) + "</strong><span class='meta'>" + esc(medium(item.mediumId).name) + " · " + secs(item.duration) + "</span></div>" + sceneButtons(item) + "</div>" + cutRow;
+  }).join("");
+  return "<div class='layout b'>" + bar(false) + "<div class='b-feel bar'>" + appearanceFields() + "</div><div class='b-main'>" +
+    "<section class='section scroll'><h2>Escenas</h2>" + addControl() + "<div class='b-doc'>" + (doc || "<p>El proyecto no tiene escenas.</p>") + "</div></section>" +
+    "<section class='section scroll'><div class='b-form'>" + (s ? phone(s) : "") + "<div>" + notice() + sceneForm(s, false) + "</div></div></section>" +
+    "<section class='section scroll'>" + libraryBlock() + "</section></div></div>";
+}
+function variantC() {
+  const s = selected();
+  const modes = [["biblioteca", "Biblioteca"], ["escenas", "Escenas"], ["escena", "Escena"], ["apariencia", "Apariencia"]];
+  let body = "";
+  if (ui.mode === "biblioteca") body = "<div class='scroll' style='padding:16px'>" + notice() + libraryBlock() + "</div>";
+  if (ui.mode === "escenas") {
+    const rows = state.scenes.map((item, index) => "<article class='" + (s && s.id === item.id ? "is-selected" : "") + "'>" + phone(item) + "<div><strong>Escena " + (index + 1) + "</strong><p>" + esc(medium(item.mediumId).name) + " · " + secs(item.duration) + "</p></div>" + sceneButtons(item) + "</article>").join("");
+    body = "<div class='scroll'>" + notice() + "<div style='padding:16px'>" + addControl() + "</div><div class='c-list'>" + (rows || "<p style='padding:16px'>El proyecto no tiene escenas.</p>") + "</div></div>";
+  }
+  if (ui.mode === "escena") body = "<div class='c-escena scroll'>" + (s ? phone(s) : "") + "<div>" + notice() + sceneForm(s) + "</div></div>";
+  if (ui.mode === "apariencia") body = "<div class='scroll' style='padding:16px'>" + appearanceFields() + notice() + "</div>";
+  return "<div class='layout c'>" + bar() + "<div class='c-modes bar'>" + modes.map(([id, label]) => "<button type='button' data-act='mode' data-mode='" + id + "' class='" + (ui.mode === id ? "is-selected" : "") + "'>" + label + "</button>").join("") + "<span class='meta grow'>El short dura " + secs(shortSeconds()) + "</span></div><div class='c-body'>" + body + "</div></div>";
+}
+
+function snapshot() {
+  return {
+    variante: variantKey(),
+    shortSegundos: Math.round(shortSeconds() * 10) / 10,
+    aviso: state.notice,
+    apariencia: state.appearance,
+    biblioteca: state.library.map((m) => ({ nombre: m.name, clase: kindLabel(m), archivo: m.fileSeconds || null })),
+    escenas: state.scenes.map((s) => ({
+      id: s.id,
+      medio: medium(s.mediumId).name,
+      duracion: s.duration,
+      narracion: s.narrationId ? medium(s.narrationId).name : null,
+      textos: s.texts.map((t) => t.content)
+    })),
+    cortes: state.cuts.map((c) => ({ de: c.fromId, a: c.toId, tipo: c.type, segundos: c.seconds || 0 })),
+    supuestos: [
+      "La narración suena toda la escena, desde el inicio, a volumen pleno.",
+      "El idioma de la interfaz es español."
+    ]
+  };
+}
+function paintState() {
+  const box = document.getElementById("statebox");
+  box.hidden = !ui.stateOpen;
+  box.textContent = JSON.stringify(snapshot(), null, 2);
+}
+function applyAppearance() {
+  const a = state.appearance;
+  const root = document.documentElement.style;
+  root.setProperty("--text", a.text);
+  root.setProperty("--bg", a.bg);
+  root.setProperty("--font", a.font + "px");
+  root.setProperty("--bar-icon", a.barIcon + "px");
+  root.setProperty("--bar-control", a.barControl + "px");
+  root.setProperty("--section-icon", a.sectionIcon + "px");
+  root.setProperty("--section-control", a.sectionControl + "px");
+}
+function render() {
+  const key = variantKey();
+  const view = key === "B" ? variantB() : key === "C" ? variantC() : variantA();
+  document.getElementById("app").innerHTML = view;
+  const current = VARIANTS.find((item) => item.key === key);
+  const index = VARIANTS.findIndex((item) => item.key === key);
+  document.getElementById("switcher").innerHTML =
+    "<button type='button' data-switch='-1' aria-label='Variante anterior'>←</button>" +
+    "<span>" + current.key + " — " + current.name + "</span>" +
+    "<button type='button' data-switch='1' aria-label='Variante siguiente'>→</button>" +
+    "<button type='button' class='wide' data-switch='state'>" + (ui.stateOpen ? "Ocultar estado" : "Estado") + "</button>" +
+    "<span class='meta'>Idioma: español, supuesto</span>";
+  document.getElementById("switcher").dataset.index = String(index);
+  applyAppearance();
+  paintState();
+}
+
+document.addEventListener("click", (event) => {
+  const jump = event.target.closest("[data-switch]");
+  if (jump) {
+    if (jump.dataset.switch === "state") { ui.stateOpen = !ui.stateOpen; paintState(); jump.textContent = ui.stateOpen ? "Ocultar estado" : "Estado"; return; }
+    const index = Number(document.getElementById("switcher").dataset.index);
+    const next = (index + Number(jump.dataset.switch) + VARIANTS.length) % VARIANTS.length;
+    setVariant(VARIANTS[next].key);
+    return;
+  }
+  const el = event.target.closest("[data-act]");
+  if (!el || el.tagName === "FORM") return;
+  const act = el.dataset.act;
+  if (act === "toggle-appearance") {
+    ui.appearanceOpen = !ui.appearanceOpen;
+    if (variantKey() === "C") ui.mode = ui.appearanceOpen ? "apariencia" : "escena";
+  }
+  if (act === "mode") {
+    ui.mode = el.dataset.mode;
+    ui.appearanceOpen = el.dataset.mode === "apariencia";
+  }
+  if (act === "select") state.selectedId = el.dataset.scene;
+  if (act === "add-scene") addScene(el.dataset.medium);
+  if (act === "delete-scene") deleteScene(el.dataset.scene);
+  if (act === "move") moveScene(el.dataset.scene, Number(el.dataset.dir));
+  if (act === "replace") { if (selected()) replaceMedium(selected().id, el.dataset.medium); else say("Elegí una escena."); }
+  if (act === "narrate") { if (selected()) setNarration(selected().id, el.dataset.medium); else say("Elegí una escena."); }
+  if (act === "remove-medium") removeMedium(el.dataset.medium);
+  if (act === "add-text") addText(el.dataset.scene);
+  if (act === "text-delete") deleteText(el.dataset.scene, el.dataset.text);
+  if (act === "text-move") moveText(el.dataset.scene, el.dataset.text, Number(el.dataset.dir));
+  if (act === "reset-appearance") state.appearance = { ...INITIAL };
+  try { render(); }
+  catch (error) { state.notice = error.message; ui.appearanceOpen = false; render(); }
+});
+document.addEventListener("submit", (event) => {
+  const form = event.target.closest("form");
+  if (!form) return;
+  event.preventDefault();
+  const data = new FormData(form);
+  if (form.dataset.act === "incorporate") incorporate(data.get("name"), data.get("kind"), Number(data.get("seconds")));
+  if (form.dataset.act === "add-from-select") addScene(data.get("medium"));
+  render();
+});
+document.addEventListener("change", (event) => {
+  const el = event.target;
+  if (el.dataset.appear) return;
+  if (el.dataset.change === "duration") setDuration(el.dataset.scene, Number(el.value));
+  if (el.dataset.change === "narration") setNarration(el.dataset.scene, el.value);
+  if (el.dataset.change === "transition") setTransition(el.dataset.from, el.dataset.to, el.value);
+  if (el.dataset.change === "fade") setFadeTime(el.dataset.from, el.dataset.to, Number(el.value));
+  if (el.dataset.change === "text") {
+    const patch = {};
+    patch[el.dataset.key] = el.dataset.key === "content" || el.dataset.key === "color" || el.dataset.key === "align" ? el.value : Number(el.value);
+    patchText(el.dataset.scene, el.dataset.text, patch);
+  }
+  render();
+});
+document.addEventListener("input", (event) => {
+  const el = event.target;
+  if (!el.dataset.appear) return;
+  state.appearance[el.dataset.appear] = el.type === "range" ? Number(el.value) : el.value;
+  applyAppearance();
+  const out = el.parentElement.querySelector("output");
+  if (out) out.textContent = el.value + " px";
+  paintState();
+});
+document.addEventListener("keydown", (event) => {
+  if (event.key !== "ArrowLeft" && event.key !== "ArrowRight") return;
+  const tag = event.target.closest("input, textarea, select, [contenteditable]");
+  if (tag) return;
+  const index = Number(document.getElementById("switcher").dataset.index);
+  const dir = event.key === "ArrowRight" ? 1 : -1;
+  setVariant(VARIANTS[(index + dir + VARIANTS.length) % VARIANTS.length].key);
+});
+render();
+</script>
+</body>
+</html>

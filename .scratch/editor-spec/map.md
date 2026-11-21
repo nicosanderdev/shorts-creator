@@ -34,6 +34,11 @@ Marco cerrado al chartar. Las sesiones siguientes lo toman como dado:
 - [Qué queda al reemplazar el medio visual](issues/03-reemplazar-medio.md) — Reemplazar cambia el medio de esa escena y la deja en su sitio; textos, narración, duración y cortes se conservan; un video nuevo entra desde el inicio con esa duración; elegir el mismo medio no cambia nada.
 - [Qué operaciones tiene la biblioteca](issues/04-operaciones-biblioteca.md) — Incorporar crea un medio con el nombre del archivo; se ven todos, el más reciente primero; la narración se pone o se quita de la escena; quitar de la biblioteca se niega si alguna escena lo usa.
 - [Qué variables entran en el panel de apariencia](issues/08-panel-de-apariencia.md) — Siete valores viven en este navegador, con feeling inicial y Restablecer: tipografía, color del texto, color de fondo, e iconos y elementos de las barras y de las secciones.
+- [Si se oye el audio del video](issues/09-audio-del-video.md) — La pista del video no se oye nunca y no hay un control; la narración es el único audio de la escena.
+- [Cómo entra el medio en el cuadro](issues/10-encaje-del-medio.md) — El medio llena el cuadro y lo que sobra queda fuera, centrado, igual para imagen y video; un GIF es un video.
+- [Qué pasa si el video no alcanza la duración](issues/11-video-mas-corto-que-la-duracion.md) — El recorte no pasa del final del archivo; no se congela el último fotograma; si al reemplazar no cabe, la escena se acorta y los fundidos vecinos bajan.
+- [Con qué duración y recorte nace la escena](issues/12-duracion-al-anadir.md) — Nace en tres segundos, o en el largo del archivo si es más corto; la entrada queda al inicio y no se mueve a mano.
+- [Cómo se ve el editor](issues/07-como-se-ve-el-editor.md) — Un modo por vez: biblioteca, escenas, escena o apariencia. En la escena el cuadro queda grande, al lado de sus datos.
 
 ## Not yet specified
 
