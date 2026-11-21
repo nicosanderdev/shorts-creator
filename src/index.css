@@ -64,11 +64,6 @@ body,
   cursor: pointer;
 }
 
-.editor button[aria-pressed="true"] {
-  background: var(--text);
-  color: var(--bg);
-}
-
 .section {
   display: flex;
   flex-direction: column;

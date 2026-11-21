@@ -18,13 +18,9 @@ const modes = [
 
 type Mode = (typeof modes)[number]["id"];
 
-type Scene = {
-  duration: number;
-};
-
 type Project = {
   name: string;
-  scenes: Scene[];
+  scenes: unknown[];
 };
 
 type UserDocument = {
@@ -41,19 +37,10 @@ function emptyUser(): UserDocument {
   };
 }
 
-function isScene(value: unknown): value is Scene {
-  return (
-    !!value &&
-    typeof value === "object" &&
-    typeof (value as Scene).duration === "number"
-  );
-}
-
 function parseProject(value: unknown): Project | null {
   if (!value || typeof value !== "object") return null;
   const record = value as Record<string, unknown>;
   if (record.name !== "Proyecto" || !Array.isArray(record.scenes)) return null;
-  if (!record.scenes.every(isScene)) return null;
   return { name: "Proyecto", scenes: record.scenes };
 }
 
@@ -87,19 +74,10 @@ function openUser(): UserDocument {
   return created;
 }
 
-function shortDurationSeconds(project: Project): number {
-  return project.scenes.reduce((total, scene) => total + scene.duration, 0);
-}
-
-function formatSeconds(seconds: number): string {
-  return `${String(seconds).replace(".", ",")} s`;
-}
-
 export function Editor() {
   const [user] = useState(openUser);
   const [mode, setMode] = useState<Mode>("escenas");
   const project = user.projects[0];
-  const duration = formatSeconds(shortDurationSeconds(project));
 
   return (
     <main
@@ -107,7 +85,6 @@ export function Editor() {
       style={
         {
           ...feelingInicial,
-          "--text": feelingInicial.color,
           "--bg": feelingInicial.backgroundColor,
           "--bar-element": "36px",
         } as CSSProperties
@@ -116,7 +93,7 @@ export function Editor() {
       <header className="bar">
         <div className="project">
           <h1>{project.name}</h1>
-          <p>El short dura {duration}</p>
+          <p>El short dura 0 s</p>
         </div>
         <nav aria-label="Modos">
           {modes.map((item) => (
