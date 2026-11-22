@@ -4,14 +4,14 @@
 
 **Blocked by:** 01 — El editor abre con un proyecto vacío
 
-**Status:** ready-for-agent
+**Status:** done
 
-- [ ] Incorporar un video, una imagen o un audio crea un medio nuevo
-- [ ] Un GIF se incorpora como video
-- [ ] El nombre es el del archivo, sin la carpeta de donde salió
-- [ ] El mismo archivo, traído dos veces, son dos medios
-- [ ] Dos medios pueden llamarse igual y no se renombran
-- [ ] Un archivo que no es video, imagen ni audio no crea un medio y la biblioteca queda como estaba
-- [ ] La lista muestra todos los medios, los use o no una escena, con su clase
-- [ ] Van en orden de incorporación, el más reciente primero
-- [ ] Es una sola lista del usuario
+- [x] Incorporar un video, una imagen o un audio crea un medio nuevo
+- [x] Un GIF se incorpora como video
+- [x] El nombre es el del archivo, sin la carpeta de donde salió
+- [x] El mismo archivo, traído dos veces, son dos medios
+- [x] Dos medios pueden llamarse igual y no se renombran
+- [x] Un archivo que no es video, imagen ni audio no crea un medio y la biblioteca queda como estaba
+- [x] La lista muestra todos los medios, los use o no una escena, con su clase
+- [x] Van en orden de incorporación, el más reciente primero
+- [x] Es una sola lista del usuario
