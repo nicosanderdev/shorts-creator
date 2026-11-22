@@ -28,7 +28,9 @@ body,
 
 .bar,
 .section,
-.editor button {
+.editor button,
+.editor input,
+.editor select {
   background: var(--bg);
 }
 
@@ -54,14 +56,98 @@ body,
   gap: 8px;
 }
 
-.editor button {
-  font: inherit;
+.editor fieldset {
+  margin: 0;
+  padding: 0;
+  border: 0;
+  min-inline-size: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.editor legend {
+  padding: 0;
+  font-weight: 500;
+}
+
+.editor label {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 4px;
+}
+
+.editor button,
+.editor input {
+  box-sizing: border-box;
+  font-family: inherit;
+  font-weight: inherit;
+  line-height: inherit;
   color: inherit;
   border: 1px solid currentColor;
   border-radius: 0;
-  height: var(--bar-element);
   padding: 0 10px;
+}
+
+.editor input[type="color"] {
+  padding: 0;
+}
+
+.editor button {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
   cursor: pointer;
+}
+
+.bar button {
+  height: var(--bar-element);
+}
+
+.bar button svg {
+  width: var(--bar-icon);
+  height: var(--bar-icon);
+}
+
+.section button,
+.section input,
+.section select {
+  height: var(--section-element);
+}
+
+.section > button {
+  align-self: flex-start;
+}
+
+.section h2 {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.section h2 svg {
+  width: var(--section-icon);
+  height: var(--section-icon);
+}
+
+.bar button svg,
+.section h2 svg {
+  display: block;
+  flex: none;
+}
+
+.bar button:hover,
+.bar button:focus-visible,
+.bar button[aria-pressed="true"],
+.section button:hover,
+.section button:focus-visible,
+.section input:hover,
+.section input:focus-visible,
+.section select:hover,
+.section select:focus-visible {
+  color: var(--bg);
+  background-color: var(--fg);
 }
 
 .section {
