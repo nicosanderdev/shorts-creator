@@ -15,6 +15,7 @@ body,
 
 .editor h1,
 .editor h2,
+.editor h3,
 .editor p {
   margin: 0;
   font-size: 1em;
@@ -30,7 +31,8 @@ body,
 .section,
 .editor button,
 .editor input,
-.editor select {
+.editor select,
+.editor textarea {
   background: var(--bg);
 }
 
@@ -79,7 +81,9 @@ body,
 }
 
 .editor button,
-.editor input {
+.editor input,
+.editor select,
+.editor textarea {
   box-sizing: border-box;
   font-family: inherit;
   font-weight: inherit;
@@ -88,6 +92,10 @@ body,
   border: 1px solid currentColor;
   border-radius: 0;
   padding: 0 10px;
+}
+
+.editor textarea {
+  padding: 8px 10px;
 }
 
 .editor input[type="color"] {
@@ -114,6 +122,10 @@ body,
 .section input,
 .section select {
   height: var(--section-element);
+}
+
+.section textarea {
+  min-height: var(--section-element);
 }
 
 .section > button {
@@ -145,7 +157,9 @@ body,
 .section input:hover,
 .section input:focus-visible,
 .section select:hover,
-.section select:focus-visible {
+.section select:focus-visible,
+.section textarea:hover,
+.section textarea:focus-visible {
   color: var(--bg);
   background-color: var(--fg);
 }
@@ -194,4 +208,33 @@ body,
   height: 100%;
   object-fit: cover;
   object-position: center;
+}
+
+.textos {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.textos-cabecera,
+.texto-cabecera {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+.textos ul {
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.texto-item {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding-top: 10px;
+  border-top: 1px solid currentColor;
 }

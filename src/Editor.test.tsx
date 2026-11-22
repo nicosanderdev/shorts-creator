@@ -327,7 +327,9 @@ test("una imagen nace en tres segundos, sin recorte, y llena el cuadro", async (
   expect(within(scene).queryByText("corte directo")).not.toBeInTheDocument();
   expect(screen.getByText("El short dura 3 s")).toBeInTheDocument();
   expect(scene.querySelector("audio")).toBeNull();
-  expect(within(scene).queryByRole("button")).not.toBeInTheDocument();
+  expect(within(scene).getAllByRole("button").map((button) => button.textContent)).toEqual([
+    "Añadir texto",
+  ]);
   expect(within(scene).queryByRole("combobox")).not.toBeInTheDocument();
   expect(within(scene).queryByRole("checkbox")).not.toBeInTheDocument();
   expect(screen.queryByRole("region", { name: "Escenas" })).not.toBeInTheDocument();
@@ -423,7 +425,9 @@ test("un video de diez segundos nace con la entrada al inicio y dura tres", asyn
   expect(video).not.toHaveAttribute("controls");
   expect(video).toHaveStyle({ objectFit: "cover", objectPosition: "center" });
   expect(scene.querySelector("audio")).toBeNull();
-  expect(within(scene).queryByRole("button")).not.toBeInTheDocument();
+  expect(within(scene).getAllByRole("button").map((button) => button.textContent)).toEqual([
+    "Añadir texto",
+  ]);
   expect(within(scene).queryByRole("checkbox")).not.toBeInTheDocument();
 });
 
@@ -545,7 +549,9 @@ test("un GIF se ve en el cuadro como video, en silencio y sin repetirse", async 
   expect(within(scene).getByText("0 s")).toBeInTheDocument();
   expect(screen.getByText("El short dura 3 s")).toBeInTheDocument();
   expect(scene.querySelector("audio")).toBeNull();
-  expect(within(scene).queryByRole("button")).not.toBeInTheDocument();
+  expect(within(scene).getAllByRole("button").map((button) => button.textContent)).toEqual([
+    "Añadir texto",
+  ]);
   expect(within(scene).queryByRole("checkbox")).not.toBeInTheDocument();
 });
 
@@ -1043,4 +1049,286 @@ test("el panel usa la misma tipografía que el resto", async () => {
   expect(within(panel).getByRole("button", { name: "Restablecer" })).toHaveStyle({ fontSize: "28px" });
   expect(screen.getByRole("heading", { name: "Proyecto" })).toHaveStyle({ fontSize: "28px" });
   expect(screen.getByRole("button", { name: "Biblioteca" })).toHaveStyle({ fontSize: "28px" });
+});
+
+async function openSceneWithImage(user: ReturnType<typeof userEvent.setup>) {
+  await user.click(screen.getByRole("button", { name: "Biblioteca" }));
+  await user.upload(
+    screen.getByLabelText("Incorporar"),
+    new File(["imagen"], "foto.png", { type: "image/png" }),
+  );
+  await user.click(screen.getByRole("button", { name: "Escenas" }));
+  await user.click(screen.getByRole("button", { name: "Añadir" }));
+
+  const scene = await screen.findByRole("region", { name: "Escena" });
+  const cuadro = within(scene).getByRole("region", { name: "Cuadro" });
+  return { scene, cuadro };
+}
+
+test("añadir un texto lo crea en el centro, en blanco, alineado al centro y a ocho centésimos de la altura", async () => {
+  const user = userEvent.setup();
+  render(<Editor />);
+
+  const { scene, cuadro } = await openSceneWithImage(user);
+  expect(within(scene).getByRole("list", { name: "Textos" })).toBeEmptyDOMElement();
+
+  await user.click(within(scene).getByRole("button", { name: "Añadir texto" }));
+
+  const items = within(within(scene).getByRole("list", { name: "Textos" })).getAllByRole("listitem");
+  expect(items).toHaveLength(1);
+  expect(within(items[0]).getByLabelText("Contenido")).toHaveValue("Texto");
+  expect(within(items[0]).getByRole("spinbutton", { name: "Horizontal" })).toHaveValue(0.5);
+  expect(within(items[0]).getByRole("spinbutton", { name: "Vertical" })).toHaveValue(0.5);
+  expect(within(items[0]).getByRole("spinbutton", { name: "Tamaño" })).toHaveValue(0.08);
+  expect(within(items[0]).getByLabelText("Color")).toHaveValue("#ffffff");
+  expect(within(items[0]).getByRole("combobox", { name: "Alineación" })).toHaveValue("center");
+
+  const overlay = within(cuadro).getByText("Texto");
+  expect(overlay).toHaveStyle({
+    position: "absolute",
+    left: "50%",
+    top: "50%",
+    transform: "translate(-50%, -50%)",
+    color: "#ffffff",
+    textAlign: "center",
+    fontSize: "8cqh",
+    width: "max-content",
+  });
+});
+
+test("una escena puede tener varios textos apilados en el orden de la lista, con el último arriba y una sola fuente", async () => {
+  const user = userEvent.setup();
+  render(<Editor />);
+
+  const { scene, cuadro } = await openSceneWithImage(user);
+  const add = within(scene).getByRole("button", { name: "Añadir texto" });
+  await user.click(add);
+  await user.click(add);
+
+  const items = within(within(scene).getByRole("list", { name: "Textos" })).getAllByRole("listitem");
+  expect(items).toHaveLength(2);
+
+  const overlays = within(cuadro).getAllByText("Texto");
+  expect(overlays).toHaveLength(2);
+  expect(Number(getComputedStyle(overlays[1]).zIndex)).toBeGreaterThan(
+    Number(getComputedStyle(overlays[0]).zIndex),
+  );
+  expect(overlays[0]).toHaveStyle({ fontFamily: "inherit" });
+  expect(overlays[1]).toHaveStyle({ fontFamily: "inherit" });
+
+  expect(
+    within(scene).queryByLabelText(/fuente|tipografía|caja|borde|sombra|animación|preset|inicio|fin/i),
+  ).not.toBeInTheDocument();
+});
+
+test("editar contenido, posición, tamaño, color y alineación se ve en el cuadro en vivo", async () => {
+  const user = userEvent.setup();
+  render(<Editor />);
+
+  const { scene, cuadro } = await openSceneWithImage(user);
+  await user.click(within(scene).getByRole("button", { name: "Añadir texto" }));
+
+  const item = within(within(scene).getByRole("list", { name: "Textos" })).getByRole("listitem");
+  const content = within(item).getByLabelText("Contenido");
+  await user.clear(content);
+  await user.type(content, "Amanece");
+  expect(within(cuadro).getByText("Amanece")).toBeInTheDocument();
+
+  const horizontal = within(item).getByRole("spinbutton", { name: "Horizontal" });
+  await user.clear(horizontal);
+  await user.type(horizontal, "0.25");
+
+  const vertical = within(item).getByRole("spinbutton", { name: "Vertical" });
+  await user.clear(vertical);
+  await user.type(vertical, "0.75");
+
+  const size = within(item).getByRole("spinbutton", { name: "Tamaño" });
+  await user.clear(size);
+  await user.type(size, "0.12");
+
+  const color = within(item).getByLabelText("Color");
+  fireEvent.input(color, { target: { value: "#2244aa" } });
+
+  const align = within(item).getByRole("combobox", { name: "Alineación" });
+  await user.selectOptions(align, "Izquierda");
+
+  const overlay = within(cuadro).getByText("Amanece");
+  expect(overlay).toHaveStyle({
+    left: "25%",
+    top: "75%",
+    transform: "translate(-50%, -50%)",
+    fontSize: "12cqh",
+    color: "#2244aa",
+    textAlign: "left",
+  });
+
+  await user.clear(size);
+  await user.type(size, "0");
+  await user.tab();
+  expect(size).toHaveValue(0.12);
+  expect(overlay).toHaveStyle({ fontSize: "12cqh" });
+
+  fireEvent.input(size, { target: { value: "-0.1" } });
+  expect(size).toHaveValue(0.12);
+  expect(overlay).toHaveStyle({ fontSize: "12cqh" });
+});
+
+test("reordenar los textos cambia el orden de la lista y el apilado en el cuadro", async () => {
+  const user = userEvent.setup();
+  render(<Editor />);
+
+  const { scene, cuadro } = await openSceneWithImage(user);
+  const add = within(scene).getByRole("button", { name: "Añadir texto" });
+  await user.click(add);
+  await user.click(add);
+
+  let items = within(within(scene).getByRole("list", { name: "Textos" })).getAllByRole("listitem");
+  await user.clear(within(items[0]).getByLabelText("Contenido"));
+  await user.type(within(items[0]).getByLabelText("Contenido"), "Primero");
+  await user.clear(within(items[1]).getByLabelText("Contenido"));
+  await user.type(within(items[1]).getByLabelText("Contenido"), "Segundo");
+
+  expect(within(items[0]).getByRole("button", { name: "Más atrás" })).toBeDisabled();
+  expect(within(items[1]).getByRole("button", { name: "Más adelante" })).toBeDisabled();
+  expect(
+    Number(getComputedStyle(within(cuadro).getByText("Segundo")).zIndex),
+  ).toBeGreaterThan(Number(getComputedStyle(within(cuadro).getByText("Primero")).zIndex));
+
+  await user.click(within(items[0]).getByRole("button", { name: "Más adelante" }));
+
+  items = within(within(scene).getByRole("list", { name: "Textos" })).getAllByRole("listitem");
+  expect(within(items[0]).getByLabelText("Contenido")).toHaveValue("Segundo");
+  expect(within(items[1]).getByLabelText("Contenido")).toHaveValue("Primero");
+  expect(
+    Number(getComputedStyle(within(cuadro).getByText("Primero")).zIndex),
+  ).toBeGreaterThan(Number(getComputedStyle(within(cuadro).getByText("Segundo")).zIndex));
+
+  await user.click(within(items[1]).getByRole("button", { name: "Más atrás" }));
+
+  items = within(within(scene).getByRole("list", { name: "Textos" })).getAllByRole("listitem");
+  expect(within(items[0]).getByLabelText("Contenido")).toHaveValue("Primero");
+  expect(within(items[1]).getByLabelText("Contenido")).toHaveValue("Segundo");
+  expect(
+    Number(getComputedStyle(within(cuadro).getByText("Segundo")).zIndex),
+  ).toBeGreaterThan(Number(getComputedStyle(within(cuadro).getByText("Primero")).zIndex));
+});
+
+test("quitar un texto lo saca de la lista y del cuadro sin tocar el medio ni los demás textos", async () => {
+  const user = userEvent.setup();
+  render(<Editor />);
+
+  const { scene, cuadro } = await openSceneWithImage(user);
+  const add = within(scene).getByRole("button", { name: "Añadir texto" });
+  await user.click(add);
+  await user.click(add);
+
+  let items = within(within(scene).getByRole("list", { name: "Textos" })).getAllByRole("listitem");
+  await user.clear(within(items[0]).getByLabelText("Contenido"));
+  await user.type(within(items[0]).getByLabelText("Contenido"), "Primero");
+  await user.clear(within(items[1]).getByLabelText("Contenido"));
+  await user.type(within(items[1]).getByLabelText("Contenido"), "Segundo");
+
+  await user.click(within(items[0]).getByRole("button", { name: "Quitar" }));
+
+  items = within(within(scene).getByRole("list", { name: "Textos" })).getAllByRole("listitem");
+  expect(items).toHaveLength(1);
+  expect(within(items[0]).getByLabelText("Contenido")).toHaveValue("Segundo");
+  expect(within(cuadro).queryByText("Primero")).not.toBeInTheDocument();
+  expect(within(cuadro).getByText("Segundo")).toBeInTheDocument();
+  expect(within(scene).getByText("foto.png")).toBeInTheDocument();
+  expect(within(scene).getByText("3 s")).toBeInTheDocument();
+  expect(screen.getByText("El short dura 3 s")).toBeInTheDocument();
+
+  await user.click(within(items[0]).getByRole("button", { name: "Quitar" }));
+  expect(within(scene).getByRole("list", { name: "Textos" })).toBeEmptyDOMElement();
+  expect(within(scene).getByText("Esta escena no tiene textos.")).toBeInTheDocument();
+  expect(within(cuadro).queryByText("Segundo")).not.toBeInTheDocument();
+});
+
+test("al volver, los textos de la escena siguen con su contenido, posición, tamaño, color, alineación y orden", async () => {
+  const user = userEvent.setup();
+  const first = render(<Editor />);
+
+  let { scene } = await openSceneWithImage(user);
+  const add = within(scene).getByRole("button", { name: "Añadir texto" });
+  await user.click(add);
+  await user.click(add);
+
+  let items = within(within(scene).getByRole("list", { name: "Textos" })).getAllByRole("listitem");
+  await user.clear(within(items[0]).getByLabelText("Contenido"));
+  await user.type(within(items[0]).getByLabelText("Contenido"), "Fondo");
+  await user.clear(within(items[1]).getByLabelText("Contenido"));
+  await user.type(within(items[1]).getByLabelText("Contenido"), "Frente");
+  await user.clear(within(items[1]).getByRole("spinbutton", { name: "Horizontal" }));
+  await user.type(within(items[1]).getByRole("spinbutton", { name: "Horizontal" }), "0.3");
+  await user.clear(within(items[1]).getByRole("spinbutton", { name: "Vertical" }));
+  await user.type(within(items[1]).getByRole("spinbutton", { name: "Vertical" }), "0.8");
+  await user.clear(within(items[1]).getByRole("spinbutton", { name: "Tamaño" }));
+  await user.type(within(items[1]).getByRole("spinbutton", { name: "Tamaño" }), "0.1");
+  fireEvent.input(within(items[1]).getByLabelText("Color"), { target: { value: "#ff00aa" } });
+  await user.selectOptions(within(items[1]).getByRole("combobox", { name: "Alineación" }), "Derecha");
+
+  first.unmount();
+  render(<Editor />);
+
+  await user.click(
+    within(screen.getByRole("list", { name: "Escenas" })).getByRole("button", { name: "foto.png" }),
+  );
+  scene = await screen.findByRole("region", { name: "Escena" });
+  items = within(within(scene).getByRole("list", { name: "Textos" })).getAllByRole("listitem");
+  expect(items).toHaveLength(2);
+  expect(within(items[0]).getByLabelText("Contenido")).toHaveValue("Fondo");
+  expect(within(items[1]).getByLabelText("Contenido")).toHaveValue("Frente");
+  expect(within(items[1]).getByRole("spinbutton", { name: "Horizontal" })).toHaveValue(0.3);
+  expect(within(items[1]).getByRole("spinbutton", { name: "Vertical" })).toHaveValue(0.8);
+  expect(within(items[1]).getByRole("spinbutton", { name: "Tamaño" })).toHaveValue(0.1);
+  expect(within(items[1]).getByLabelText("Color")).toHaveValue("#ff00aa");
+  expect(within(items[1]).getByRole("combobox", { name: "Alineación" })).toHaveValue("right");
+
+  const cuadro = within(scene).getByRole("region", { name: "Cuadro" });
+  const front = within(cuadro).getByText("Frente");
+  expect(front).toHaveStyle({
+    left: "30%",
+    top: "80%",
+    fontSize: "10cqh",
+    color: "#ff00aa",
+    textAlign: "right",
+  });
+  expect(Number(getComputedStyle(front).zIndex)).toBeGreaterThan(
+    Number(getComputedStyle(within(cuadro).getByText("Fondo")).zIndex),
+  );
+});
+
+test("una escena guardada antes sin textos se abre sin perder el proyecto", async () => {
+  localStorage.setItem(
+    "shorts-editor",
+    JSON.stringify({
+      id: "u1",
+      library: [{ id: "m1", name: "foto.png", kind: "imagen" }],
+      projects: [
+        {
+          name: "Proyecto",
+          scenes: [
+            {
+              id: "s1",
+              mediumId: "m1",
+              duration: 3,
+              entry: null,
+              cutWithPrevious: null,
+            },
+          ],
+        },
+      ],
+    }),
+  );
+
+  const user = userEvent.setup();
+  render(<Editor />);
+
+  await user.click(
+    within(screen.getByRole("list", { name: "Escenas" })).getByRole("button", { name: "foto.png" }),
+  );
+  const scene = await screen.findByRole("region", { name: "Escena" });
+  expect(within(scene).getByText("foto.png")).toBeInTheDocument();
+  expect(within(scene).getByRole("list", { name: "Textos" })).toBeEmptyDOMElement();
 });

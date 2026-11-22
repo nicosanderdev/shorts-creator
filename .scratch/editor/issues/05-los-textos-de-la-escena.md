@@ -4,16 +4,16 @@
 
 **Blocked by:** 04 — Añadir una escena y verla en el cuadro
 
-**Status:** ready-for-agent
+**Status:** done
 
-- [ ] Añadir un texto lo crea con el contenido «Texto», en el centro del cuadro, con un tamaño de ocho centésimos de la altura, en blanco y alineado al centro
-- [ ] Una escena puede tener varios textos a la vez y cada uno dura la escena entera
-- [ ] La persona edita el contenido, la posición, el tamaño, el color y la alineación
-- [ ] La posición es el centro del bloque, como fracción horizontal y vertical del cuadro
-- [ ] El tamaño es una fracción de la altura del cuadro
-- [ ] La alineación es izquierda, centro o derecha
-- [ ] El orden de la lista es el apilado: el último se dibuja arriba
-- [ ] La persona puede quitar un texto y puede reordenar los textos
-- [ ] Si la duración de la escena cambia, los textos siguen ocupándola entera y su posición, tamaño, color y alineación no cambian
-- [ ] Los textos se ven en el cuadro mientras se editan
-- [ ] Hay una sola fuente, la misma del resto del editor; no se elige familia, caja, borde, sombra, animación ni preset
+- [x] Añadir un texto lo crea con el contenido «Texto», en el centro del cuadro, con un tamaño de ocho centésimos de la altura, en blanco y alineado al centro
+- [x] Una escena puede tener varios textos a la vez y cada uno dura la escena entera
+- [x] La persona edita el contenido, la posición, el tamaño, el color y la alineación
+- [x] La posición es el centro del bloque, como fracción horizontal y vertical del cuadro
+- [x] El tamaño es una fracción de la altura del cuadro
+- [x] La alineación es izquierda, centro o derecha
+- [x] El orden de la lista es el apilado: el último se dibuja arriba
+- [x] La persona puede quitar un texto y puede reordenar los textos
+- [x] Si la duración de la escena cambia, los textos siguen ocupándola entera y su posición, tamaño, color y alineación no cambian
+- [x] Los textos se ven en el cuadro mientras se editan
+- [x] Hay una sola fuente, la misma del resto del editor; no se elige familia, caja, borde, sombra, animación ni preset

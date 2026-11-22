@@ -33,12 +33,25 @@ const modes = [
 
 type Mode = (typeof modes)[number]["id"];
 
+type TextAlign = "left" | "center" | "right";
+
+type SceneText = {
+  id: string;
+  content: string;
+  x: number;
+  y: number;
+  size: number;
+  color: string;
+  align: TextAlign;
+};
+
 type Scene = {
   id: string;
   mediumId: string;
   duration: number;
   entry: number | null;
   cutWithPrevious: "corte directo" | null;
+  texts: SceneText[];
 };
 
 type Project = {
@@ -112,6 +125,29 @@ function emptyUser(): UserDocument {
   };
 }
 
+function parseText(value: unknown): SceneText | null {
+  if (!value || typeof value !== "object") return null;
+  const record = value as Record<string, unknown>;
+  if (typeof record.id !== "string" || record.id === "") return null;
+  if (typeof record.content !== "string") return null;
+  if (typeof record.x !== "number" || !Number.isFinite(record.x)) return null;
+  if (typeof record.y !== "number" || !Number.isFinite(record.y)) return null;
+  if (typeof record.size !== "number" || !Number.isFinite(record.size) || record.size <= 0) {
+    return null;
+  }
+  if (!isHexColor(record.color)) return null;
+  if (record.align !== "left" && record.align !== "center" && record.align !== "right") return null;
+  return {
+    id: record.id,
+    content: record.content,
+    x: record.x,
+    y: record.y,
+    size: record.size,
+    color: record.color.toLowerCase(),
+    align: record.align,
+  };
+}
+
 function parseScene(value: unknown): Scene | null {
   if (!value || typeof value !== "object") return null;
   const record = value as Record<string, unknown>;
@@ -126,12 +162,20 @@ function parseScene(value: unknown): Scene | null {
     entry = record.entry;
   } else return null;
   if (record.cutWithPrevious !== null && record.cutWithPrevious !== "corte directo") return null;
+  if (record.texts !== undefined && !Array.isArray(record.texts)) return null;
+  const texts: SceneText[] = [];
+  for (const item of record.texts ?? []) {
+    const text = parseText(item);
+    if (!text) return null;
+    texts.push(text);
+  }
   return {
     id: record.id,
     mediumId: record.mediumId,
     duration: record.duration,
     entry,
     cutWithPrevious: record.cutWithPrevious === null ? null : "corte directo",
+    texts,
   };
 }
 
@@ -195,22 +239,23 @@ function SectionHeading({ children }: { children: string }) {
   );
 }
 
-function readSize(raw: string): number | "keep-typing" | "reject" {
-  if (raw === "") return "keep-typing";
-  if (!/^\d+$/.test(raw)) return "reject";
-  const next = Number(raw);
-  if (next >= 8 && next <= 96) return next;
-  if (raw.length === 1) return "keep-typing";
-  return "reject";
-}
+type NumberRead = number | "keep-typing" | "reject";
 
-function SizeField({
+function DraftNumberField({
   label,
   value,
+  min,
+  max,
+  step,
+  parse,
   onChange,
 }: {
   label: string;
   value: number;
+  min?: number;
+  max?: number;
+  step: number | "any";
+  parse: (raw: string) => NumberRead;
   onChange: (next: number) => void;
 }) {
   const [draft, setDraft] = useState<{ base: number; text: string } | null>(null);
@@ -218,7 +263,7 @@ function SizeField({
 
   function handleChange(event: ChangeEvent<HTMLInputElement>) {
     const raw = event.target.value;
-    const read = readSize(raw);
+    const read = parse(raw);
     if (typeof read === "number") {
       setDraft(null);
       onChange(read);
@@ -236,14 +281,77 @@ function SizeField({
       {label}
       <input
         type="number"
-        min={8}
-        max={96}
-        step={1}
+        min={min}
+        max={max}
+        step={step}
         value={shown}
         onChange={handleChange}
         onBlur={() => setDraft(null)}
       />
     </label>
+  );
+}
+
+function readSize(raw: string): NumberRead {
+  if (raw === "") return "keep-typing";
+  if (!/^\d+$/.test(raw)) return "reject";
+  const next = Number(raw);
+  if (next >= 8 && next <= 96) return next;
+  if (raw.length === 1) return "keep-typing";
+  return "reject";
+}
+
+function SizeField({
+  label,
+  value,
+  onChange,
+}: {
+  label: string;
+  value: number;
+  onChange: (next: number) => void;
+}) {
+  return (
+    <DraftNumberField
+      label={label}
+      value={value}
+      min={8}
+      max={96}
+      step={1}
+      parse={readSize}
+      onChange={onChange}
+    />
+  );
+}
+
+function readFraction(raw: string, positiveOnly: boolean): NumberRead {
+  if (raw === "" || raw === "-" || raw === "." || raw.endsWith(".")) return "keep-typing";
+  if (!/^-?\d*\.?\d+$/.test(raw)) return "reject";
+  const next = Number(raw);
+  if (!Number.isFinite(next)) return "reject";
+  if (positiveOnly && next <= 0) return next === 0 ? "keep-typing" : "reject";
+  return next;
+}
+
+function FractionField({
+  label,
+  value,
+  positiveOnly = false,
+  onChange,
+}: {
+  label: string;
+  value: number;
+  positiveOnly?: boolean;
+  onChange: (next: number) => void;
+}) {
+  return (
+    <DraftNumberField
+      label={label}
+      value={value}
+      min={positiveOnly ? 0.01 : undefined}
+      step="any"
+      parse={(raw) => readFraction(raw, positiveOnly)}
+      onChange={onChange}
+    />
   );
 }
 
@@ -298,11 +406,12 @@ function paint(apariencia: Apariencia): string {
   const fondo = /^#[0-9a-f]{6}$/i.test(apariencia.fondo) ? apariencia.fondo : feelingInicial.fondo;
   const tipo = `${apariencia.tipografia}px`;
   return [
-    `.editor, .bar, .section, .editor button, .editor input, .editor label, .editor legend, .editor h1, .editor h2, .editor p { font-size: ${tipo}; }`,
-    `.bar, .section, .editor button, .editor input { background-color: ${fondo}; }`,
+    `.editor, .bar, .section, .editor button, .editor input, .editor select, .editor textarea, .editor label, .editor legend, .editor h1, .editor h2, .editor h3, .editor p { font-size: ${tipo}; }`,
+    `.bar, .section, .editor button, .editor input, .editor select, .editor textarea { background-color: ${fondo}; }`,
     `.bar button { height: ${apariencia.elementosBarras}px; }`,
     `.bar button svg { width: ${apariencia.iconosBarras}px; height: ${apariencia.iconosBarras}px; }`,
-    `.section button, .section input { height: ${apariencia.elementosSecciones}px; }`,
+    `.section button, .section input, .section select { height: ${apariencia.elementosSecciones}px; }`,
+    `.section textarea { min-height: ${apariencia.elementosSecciones}px; }`,
     `.section h2 svg { width: ${apariencia.iconosSecciones}px; height: ${apariencia.iconosSecciones}px; }`,
   ].join("\n");
 }
@@ -369,14 +478,37 @@ const encaje: CSSProperties = {
   objectPosition: "center",
 };
 
-function SceneFrame({ scene, medium }: { scene: Scene; medium: Medium | null }) {
+function SceneFrame({
+  scene,
+  medium,
+  onAddText,
+  onPatchText,
+  onMoveText,
+  onRemoveText,
+}: {
+  scene: Scene;
+  medium: Medium | null;
+  onAddText: () => void;
+  onPatchText: (textId: string, patch: Partial<Omit<SceneText, "id">>) => void;
+  onMoveText: (textId: string, direction: -1 | 1) => void;
+  onRemoveText: (textId: string) => void;
+}) {
   const url = medium ? mediumUrl(medium.id) : null;
   return (
     <div className="escena-cuerpo" style={{ display: "flex", flexDirection: "row", alignItems: "flex-start", gap: "16px" }}>
       <section
         className="cuadro"
         aria-label="Cuadro"
-        style={{ aspectRatio: "9 / 16", overflow: "hidden", flexGrow: 2, flexShrink: 1, flexBasis: 0, minWidth: 0 }}
+        style={{
+          position: "relative",
+          containerType: "size",
+          aspectRatio: "9 / 16",
+          overflow: "hidden",
+          flexGrow: 2,
+          flexShrink: 1,
+          flexBasis: 0,
+          minWidth: 0,
+        }}
       >
         {medium && url && medium.kind === "imagen" ? (
           <img src={url} alt={medium.name} style={encaje} />
@@ -384,12 +516,114 @@ function SceneFrame({ scene, medium }: { scene: Scene; medium: Medium | null }) 
         {medium && url && medium.kind === "video" ? (
           <video src={url} muted autoPlay playsInline style={encaje} />
         ) : null}
+        {scene.texts.map((text, index) => (
+          <span
+            key={text.id}
+            className="cuadro-texto"
+            style={{
+              position: "absolute",
+              left: `${text.x * 100}%`,
+              top: `${text.y * 100}%`,
+              transform: "translate(-50%, -50%)",
+              color: text.color,
+              textAlign: text.align,
+              fontSize: `${text.size * 100}cqh`,
+              fontFamily: "inherit",
+              lineHeight: 1.1,
+              width: "max-content",
+              maxWidth: "100%",
+              whiteSpace: "pre-wrap",
+              zIndex: index + 1,
+            }}
+          >
+            {text.content}
+          </span>
+        ))}
       </section>
       <div className="datos" style={{ flexGrow: 1, flexShrink: 1, flexBasis: 0, minWidth: 0 }}>
         <p>{medium?.name}</p>
         <p>{scene.duration} s</p>
         {scene.entry !== null ? <p>{scene.entry} s</p> : null}
         {scene.cutWithPrevious ? <p>{scene.cutWithPrevious}</p> : null}
+        <div className="textos">
+          <div className="textos-cabecera">
+            <h3>Textos</h3>
+            <button type="button" onClick={onAddText}>
+              Añadir texto
+            </button>
+          </div>
+          <ul aria-label="Textos">
+            {scene.texts.map((text, index) => (
+              <li key={text.id} className="texto-item">
+                <div className="texto-cabecera">
+                  <p>Texto {index + 1}</p>
+                  <button
+                    type="button"
+                    disabled={index === 0}
+                    onClick={() => onMoveText(text.id, -1)}
+                  >
+                    Más atrás
+                  </button>
+                  <button
+                    type="button"
+                    disabled={index === scene.texts.length - 1}
+                    onClick={() => onMoveText(text.id, 1)}
+                  >
+                    Más adelante
+                  </button>
+                  <button type="button" onClick={() => onRemoveText(text.id)}>
+                    Quitar
+                  </button>
+                </div>
+                <label>
+                  Contenido
+                  <textarea
+                    value={text.content}
+                    onChange={(event) => onPatchText(text.id, { content: event.currentTarget.value })}
+                  />
+                </label>
+                <FractionField
+                  label="Horizontal"
+                  value={text.x}
+                  onChange={(next) => onPatchText(text.id, { x: next })}
+                />
+                <FractionField
+                  label="Vertical"
+                  value={text.y}
+                  onChange={(next) => onPatchText(text.id, { y: next })}
+                />
+                <FractionField
+                  label="Tamaño"
+                  value={text.size}
+                  positiveOnly
+                  onChange={(next) => onPatchText(text.id, { size: next })}
+                />
+                <label>
+                  Color
+                  <input
+                    type="color"
+                    value={text.color}
+                    onChange={(event) => onPatchText(text.id, { color: event.currentTarget.value })}
+                  />
+                </label>
+                <label>
+                  Alineación
+                  <select
+                    value={text.align}
+                    onChange={(event) =>
+                      onPatchText(text.id, { align: event.currentTarget.value as TextAlign })
+                    }
+                  >
+                    <option value="left">Izquierda</option>
+                    <option value="center">Centro</option>
+                    <option value="right">Derecha</option>
+                  </select>
+                </label>
+              </li>
+            ))}
+          </ul>
+          {scene.texts.length === 0 ? <p>Esta escena no tiene textos.</p> : null}
+        </div>
       </div>
     </div>
   );
@@ -445,6 +679,7 @@ export function Editor() {
         duration: birth.duration,
         entry: birth.entry,
         cutWithPrevious: currentProject.scenes.length > 0 ? "corte directo" : null,
+        texts: [],
       };
       return {
         ...current,
@@ -454,6 +689,64 @@ export function Editor() {
         ],
       };
     });
+  }
+
+  function updateScene(sceneId: string, updater: (scene: Scene) => Scene) {
+    setUser((current) => {
+      const currentProject = current.projects[0];
+      return {
+        ...current,
+        projects: [
+          {
+            ...currentProject,
+            scenes: currentProject.scenes.map((scene) =>
+              scene.id === sceneId ? updater(scene) : scene,
+            ),
+          },
+          ...current.projects.slice(1),
+        ],
+      };
+    });
+  }
+
+  function addText(sceneId: string) {
+    const text: SceneText = {
+      id: crypto.randomUUID(),
+      content: "Texto",
+      x: 0.5,
+      y: 0.5,
+      size: 0.08,
+      color: "#ffffff",
+      align: "center",
+    };
+    updateScene(sceneId, (scene) => ({ ...scene, texts: [...scene.texts, text] }));
+  }
+
+  function patchText(sceneId: string, textId: string, patch: Partial<Omit<SceneText, "id">>) {
+    if (patch.color !== undefined && !isHexColor(patch.color)) return;
+    updateScene(sceneId, (scene) => ({
+      ...scene,
+      texts: scene.texts.map((text) => (text.id === textId ? { ...text, ...patch } : text)),
+    }));
+  }
+
+  function moveText(sceneId: string, textId: string, direction: -1 | 1) {
+    updateScene(sceneId, (scene) => {
+      const index = scene.texts.findIndex((text) => text.id === textId);
+      const next = index + direction;
+      if (index < 0 || next < 0 || next >= scene.texts.length) return scene;
+      const texts = [...scene.texts];
+      const [item] = texts.splice(index, 1);
+      texts.splice(next, 0, item);
+      return { ...scene, texts };
+    });
+  }
+
+  function removeText(sceneId: string, textId: string) {
+    updateScene(sceneId, (scene) => ({
+      ...scene,
+      texts: scene.texts.filter((text) => text.id !== textId),
+    }));
   }
 
   function setValor<K extends keyof Apariencia>(key: K, value: Apariencia[K]) {
@@ -579,6 +872,10 @@ export function Editor() {
             <SceneFrame
               scene={selectedScene}
               medium={user.library.find((item) => item.id === selectedScene.mediumId) ?? null}
+              onAddText={() => addText(selectedScene.id)}
+              onPatchText={(textId, patch) => patchText(selectedScene.id, textId, patch)}
+              onMoveText={(textId, direction) => moveText(selectedScene.id, textId, direction)}
+              onRemoveText={(textId) => removeText(selectedScene.id, textId)}
             />
           ) : (
             <p>No hay una escena que editar.</p>
