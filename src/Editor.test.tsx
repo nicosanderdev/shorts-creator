@@ -62,6 +62,24 @@ afterEach(() => {
 
 const modes = ["Biblioteca", "Escenas", "Escena", "Apariencia"] as const;
 
+function libraryLabels(list: HTMLElement) {
+  return within(list)
+    .getAllByRole("listitem")
+    .map((item) => item.getAttribute("aria-label"));
+}
+
+async function removeLibraryMedium(
+  user: ReturnType<typeof userEvent.setup>,
+  list: HTMLElement,
+  label: string,
+) {
+  await user.click(
+    within(within(list).getByRole("listitem", { name: label })).getByRole("button", {
+      name: "Quitar",
+    }),
+  );
+}
+
 test("al abrir, la barra muestra el proyecto y una duración del short de cero", () => {
   render(<Editor />);
 
@@ -158,7 +176,8 @@ test("incorporar un video crea un medio con su nombre y su clase", async () => {
 
   const list = screen.getByRole("list", { name: "Medios" });
   const item = within(list).getByRole("listitem");
-  expect(item).toHaveTextContent(/^clip\.mp4 video$/);
+  expect(item).toHaveAccessibleName("clip.mp4 video");
+  expect(within(item).getByText(/^clip\.mp4 video$/)).toBeInTheDocument();
   expect(screen.queryByText("No hay medios.")).not.toBeInTheDocument();
 });
 
@@ -187,8 +206,8 @@ test("un GIF se incorpora como video", async () => {
   await user.upload(input, new File(["gif"], "anim.gif", { type: "image/gif" }));
   await user.upload(input, new File(["gif"], "otro.GIF", { type: "application/octet-stream" }));
 
-  const items = within(screen.getByRole("list", { name: "Medios" })).getAllByRole("listitem");
-  expect(items.map((item) => item.textContent)).toEqual(["otro.GIF video", "anim.gif video"]);
+  const list = screen.getByRole("list", { name: "Medios" });
+  expect(libraryLabels(list)).toEqual(["otro.GIF video", "anim.gif video"]);
   expect(screen.queryByText("imagen")).not.toBeInTheDocument();
 });
 
@@ -202,8 +221,10 @@ test("el mismo archivo, traído dos veces, son dos medios", async () => {
   await user.upload(input, clip);
   await user.upload(input, clip);
 
-  const items = within(screen.getByRole("list", { name: "Medios" })).getAllByRole("listitem");
-  expect(items.map((item) => item.textContent)).toEqual(["clip.mp4 video", "clip.mp4 video"]);
+  expect(libraryLabels(screen.getByRole("list", { name: "Medios" }))).toEqual([
+    "clip.mp4 video",
+    "clip.mp4 video",
+  ]);
 });
 
 test("dos medios pueden llamarse igual y no se renombran", async () => {
@@ -215,8 +236,10 @@ test("dos medios pueden llamarse igual y no se renombran", async () => {
   await user.upload(input, new File(["uno"], "foto.png", { type: "image/png" }));
   await user.upload(input, new File(["dos"], "foto.png", { type: "image/png" }));
 
-  const items = within(screen.getByRole("list", { name: "Medios" })).getAllByRole("listitem");
-  expect(items.map((item) => item.textContent)).toEqual(["foto.png imagen", "foto.png imagen"]);
+  expect(libraryLabels(screen.getByRole("list", { name: "Medios" }))).toEqual([
+    "foto.png imagen",
+    "foto.png imagen",
+  ]);
 });
 
 test("un archivo de otra clase no crea un medio y la biblioteca queda como estaba", async () => {
@@ -234,8 +257,7 @@ test("un archivo de otra clase no crea un medio y la biblioteca queda como estab
   await user.upload(input, new File(["video"], "clip.mp4", { type: "video/mp4" }));
   await user.upload(input, new File(["texto"], "nota.txt", { type: "text/plain" }));
 
-  const items = within(list).getAllByRole("listitem");
-  expect(items.map((item) => item.textContent)).toEqual(["clip.mp4 video"]);
+  expect(libraryLabels(list)).toEqual(["clip.mp4 video"]);
   expect(screen.queryByText("No hay medios.")).not.toBeInTheDocument();
 });
 
@@ -248,8 +270,10 @@ test("la lista muestra el medio más reciente primero", async () => {
   await user.upload(input, new File(["video"], "clip.mp4", { type: "video/mp4" }));
   await user.upload(input, new File(["imagen"], "foto.png", { type: "image/png" }));
 
-  const items = within(screen.getByRole("list", { name: "Medios" })).getAllByRole("listitem");
-  expect(items.map((item) => item.textContent)).toEqual(["foto.png imagen", "clip.mp4 video"]);
+  expect(libraryLabels(screen.getByRole("list", { name: "Medios" }))).toEqual([
+    "foto.png imagen",
+    "clip.mp4 video",
+  ]);
 });
 
 test("sin tipo, la extensión decide la clase y lo demás no entra", async () => {
@@ -263,8 +287,7 @@ test("sin tipo, la extensión decide la clase y lo demás no entra", async () =>
   await user.upload(input, new File(["audio"], "nota.mp3", { type: "" }));
   await user.upload(input, new File(["otro"], "notas.pdf", { type: "" }));
 
-  const items = within(screen.getByRole("list", { name: "Medios" })).getAllByRole("listitem");
-  expect(items.map((item) => item.textContent)).toEqual([
+  expect(libraryLabels(screen.getByRole("list", { name: "Medios" }))).toEqual([
     "nota.mp3 audio",
     "foto.png imagen",
     "clip.mp4 video",
@@ -285,8 +308,10 @@ test("al volver, la biblioteca sigue con los medios, el más reciente primero", 
   render(<Editor />);
 
   await user.click(screen.getByRole("button", { name: "Biblioteca" }));
-  const items = within(screen.getByRole("list", { name: "Medios" })).getAllByRole("listitem");
-  expect(items.map((item) => item.textContent)).toEqual(["nota.mp3 audio", "clip.mp4 video"]);
+  expect(libraryLabels(screen.getByRole("list", { name: "Medios" }))).toEqual([
+    "nota.mp3 audio",
+    "clip.mp4 video",
+  ]);
   expect(screen.queryByText("No hay medios.")).not.toBeInTheDocument();
 });
 
@@ -1625,4 +1650,211 @@ test("al volver, la narración sigue en la escena y una escena guardada sin narr
   scene = await screen.findByRole("region", { name: "Escena" });
   expect(within(scene).getByRole("combobox", { name: "Narración" })).toHaveValue("");
   expect(scene.querySelector("audio")).toBeNull();
+});
+
+test("un medio que ninguna escena usa sale de la biblioteca y no vuelve al reabrir", async () => {
+  stubPlayback();
+  const user = userEvent.setup();
+  const first = render(<Editor />);
+
+  await user.click(screen.getByRole("button", { name: "Biblioteca" }));
+  const input = screen.getByLabelText("Incorporar");
+  await user.upload(input, new File(["imagen"], "foto.png", { type: "image/png" }));
+  await user.upload(input, fileWithDuration("video.mp4", "video/mp4", 4));
+  await user.upload(input, fileWithDuration("voz.mp3", "audio/mpeg", 3));
+
+  const list = screen.getByRole("list", { name: "Medios" });
+  await removeLibraryMedium(user, list, "video.mp4 video");
+
+  expect(within(list).queryByRole("listitem", { name: "video.mp4 video" })).not.toBeInTheDocument();
+  expect(within(list).getByRole("listitem", { name: "foto.png imagen" })).toBeInTheDocument();
+  expect(within(list).getByRole("listitem", { name: "voz.mp3 audio" })).toBeInTheDocument();
+
+  first.unmount();
+  render(<Editor />);
+
+  await user.click(screen.getByRole("button", { name: "Biblioteca" }));
+  const reloadedList = screen.getByRole("list", { name: "Medios" });
+  expect(
+    within(reloadedList).queryByRole("listitem", { name: "video.mp4 video" }),
+  ).not.toBeInTheDocument();
+  expect(
+    within(reloadedList).getByRole("listitem", { name: "foto.png imagen" }),
+  ).toBeInTheDocument();
+  expect(within(reloadedList).getByRole("listitem", { name: "voz.mp3 audio" })).toBeInTheDocument();
+
+  await removeLibraryMedium(user, reloadedList, "foto.png imagen");
+  await removeLibraryMedium(user, reloadedList, "voz.mp3 audio");
+
+  expect(reloadedList).toBeEmptyDOMElement();
+  expect(screen.getByText("No hay medios.")).toBeInTheDocument();
+
+  await user.click(screen.getByRole("button", { name: "Escenas" }));
+  expect(screen.queryByRole("combobox", { name: "Medio visual" })).not.toBeInTheDocument();
+  expect(screen.queryByRole("button", { name: "Añadir" })).not.toBeInTheDocument();
+});
+
+test("quitar un medio usado como medio visual se niega y deja biblioteca y proyecto igual", async () => {
+  stubPlayback();
+  const user = userEvent.setup();
+  render(<Editor />);
+
+  await user.click(screen.getByRole("button", { name: "Biblioteca" }));
+  const input = screen.getByLabelText("Incorporar");
+  await user.upload(input, new File(["primera"], "foto.png", { type: "image/png" }));
+  await user.upload(input, new File(["segunda"], "foto.png", { type: "image/png" }));
+  await user.upload(input, new File(["otra"], "otra.png", { type: "image/png" }));
+
+  // Newer "foto.png" is at index 1 in visualMedia; add Scene 1 with it, Scene 2 with "otra.png".
+  await user.click(screen.getByRole("button", { name: "Escenas" }));
+  const mediumChoice = screen.getByRole("combobox", { name: "Medio visual" });
+  const photoOptions = within(mediumChoice).getAllByRole("option", { name: "foto.png" });
+  expect(photoOptions).toHaveLength(2);
+  await user.selectOptions(mediumChoice, (photoOptions[0] as HTMLOptionElement).value);
+  await user.click(screen.getByRole("button", { name: "Añadir" }));
+
+  await user.click(screen.getByRole("button", { name: "Escenas" }));
+  await user.selectOptions(
+    screen.getByRole("combobox", { name: "Medio visual" }),
+    within(screen.getByRole("combobox", { name: "Medio visual" })).getByRole("option", {
+      name: "otra.png",
+    }),
+  );
+  await user.click(screen.getByRole("button", { name: "Añadir" }));
+
+  await user.click(screen.getByRole("button", { name: "Biblioteca" }));
+  const list = screen.getByRole("list", { name: "Medios" });
+  // Order in library (newest first): otra.png, foto.png (used), foto.png (unused).
+  expect(libraryLabels(list)).toEqual(["otra.png imagen", "foto.png imagen", "foto.png imagen"]);
+
+  // Try removing used foto.png -> denied.
+  let items = within(list).getAllByRole("listitem");
+  await user.click(within(items[1]).getByRole("button", { name: "Quitar" }));
+  expect(libraryLabels(list)).toEqual(["otra.png imagen", "foto.png imagen", "foto.png imagen"]);
+
+  // Removing unused copy succeeds.
+  items = within(list).getAllByRole("listitem");
+  await user.click(within(items[2]).getByRole("button", { name: "Quitar" }));
+  expect(libraryLabels(list)).toEqual(["otra.png imagen", "foto.png imagen"]);
+
+  expect(screen.getByText("El short dura 6 s")).toBeInTheDocument();
+  await user.click(screen.getByRole("button", { name: "Escenas" }));
+  const sceneButtons = within(screen.getByRole("list", { name: "Escenas" })).getAllByRole("button");
+  expect(sceneButtons.map((button) => button.textContent)).toEqual(["foto.png", "otra.png"]);
+
+  await user.click(sceneButtons[0]);
+  const scene = await screen.findByRole("region", { name: "Escena" });
+  expect(within(scene).getByRole("img", { name: "foto.png" }).getAttribute("src")).toBeTruthy();
+});
+
+test("un audio usado como narración no sale de la biblioteca hasta que ninguna escena lo usa", async () => {
+  stubPlayback();
+  const user = userEvent.setup();
+  render(<Editor />);
+
+  await user.click(screen.getByRole("button", { name: "Biblioteca" }));
+  const input = screen.getByLabelText("Incorporar");
+  await user.upload(input, new File(["una"], "uno.png", { type: "image/png" }));
+  await user.upload(input, new File(["dos"], "dos.png", { type: "image/png" }));
+  await user.upload(input, fileWithDuration("voz.mp3", "audio/mpeg", 4));
+
+  // Scene 1 uses voz.mp3; Scene 2 does not.
+  await user.click(screen.getByRole("button", { name: "Escenas" }));
+  let choice = screen.getByRole("combobox", { name: "Medio visual" });
+  await user.selectOptions(choice, within(choice).getByRole("option", { name: "uno.png" }));
+  await user.click(screen.getByRole("button", { name: "Añadir" }));
+  let scene = await screen.findByRole("region", { name: "Escena" });
+  let narration = within(scene).getByRole("combobox", { name: "Narración" });
+  await user.selectOptions(narration, within(narration).getByRole("option", { name: "voz.mp3" }));
+
+  await user.click(screen.getByRole("button", { name: "Escenas" }));
+  choice = screen.getByRole("combobox", { name: "Medio visual" });
+  await user.selectOptions(choice, within(choice).getByRole("option", { name: "dos.png" }));
+  await user.click(screen.getByRole("button", { name: "Añadir" }));
+  await screen.findByRole("region", { name: "Escena" });
+
+  // Try removing voz.mp3 -> denied while Scene 1 uses it.
+  await user.click(screen.getByRole("button", { name: "Biblioteca" }));
+  const list = screen.getByRole("list", { name: "Medios" });
+  await removeLibraryMedium(user, list, "voz.mp3 audio");
+  expect(within(list).getByRole("listitem", { name: "voz.mp3 audio" })).toBeInTheDocument();
+
+  // Remove narration from Scene 1 -> audio remains in library and can now be removed.
+  await user.click(screen.getByRole("button", { name: "Escenas" }));
+  await user.click(
+    within(screen.getByRole("list", { name: "Escenas" })).getByRole("button", { name: "uno.png" }),
+  );
+  scene = await screen.findByRole("region", { name: "Escena" });
+  expect(scene.querySelector("audio")).not.toBeNull();
+  narration = within(scene).getByRole("combobox", { name: "Narración" });
+  await user.selectOptions(
+    narration,
+    within(narration).getByRole("option", { name: "Sin narración" }),
+  );
+  expect(scene.querySelector("audio")).toBeNull();
+
+  await user.click(screen.getByRole("button", { name: "Biblioteca" }));
+  const listAfter = screen.getByRole("list", { name: "Medios" });
+  expect(within(listAfter).getByRole("listitem", { name: "voz.mp3 audio" })).toBeInTheDocument();
+  await removeLibraryMedium(user, listAfter, "voz.mp3 audio");
+  expect(
+    within(listAfter).queryByRole("listitem", { name: "voz.mp3 audio" }),
+  ).not.toBeInTheDocument();
+  expect(screen.getByText("El short dura 6 s")).toBeInTheDocument();
+});
+
+test("quitar un medio consulta todos los proyectos del usuario y deja la biblioteca y los proyectos igual si alguno lo usa", async () => {
+  localStorage.setItem(
+    "shorts-editor",
+    JSON.stringify({
+      id: "u1",
+      library: [
+        { id: "m1", name: "visual.png", kind: "imagen" },
+        { id: "m2", name: "relato.mp3", kind: "audio" },
+        { id: "m3", name: "libre.png", kind: "imagen" },
+      ],
+      projects: [
+        { name: "Proyecto", scenes: [] },
+        {
+          name: "Proyecto",
+          scenes: [
+            {
+              id: "s-otro",
+              mediumId: "m1",
+              duration: 3,
+              entry: null,
+              cutWithPrevious: null,
+              texts: [],
+              narrationId: "m2",
+            },
+          ],
+        },
+      ],
+    }),
+  );
+
+  const user = userEvent.setup();
+  render(<Editor />);
+
+  await user.click(screen.getByRole("button", { name: "Biblioteca" }));
+  const list = screen.getByRole("list", { name: "Medios" });
+
+  await removeLibraryMedium(user, list, "visual.png imagen");
+  await removeLibraryMedium(user, list, "relato.mp3 audio");
+
+  expect(within(list).getByRole("listitem", { name: "visual.png imagen" })).toBeInTheDocument();
+  expect(within(list).getByRole("listitem", { name: "relato.mp3 audio" })).toBeInTheDocument();
+  expect(within(list).getByRole("listitem", { name: "libre.png imagen" })).toBeInTheDocument();
+
+  await removeLibraryMedium(user, list, "libre.png imagen");
+  expect(within(list).queryByRole("listitem", { name: "libre.png imagen" })).not.toBeInTheDocument();
+
+  const stored = JSON.parse(localStorage.getItem("shorts-editor") ?? "{}");
+  expect(stored.library.map((item: { id: string }) => item.id)).toEqual(["m1", "m2"]);
+  expect(stored.projects).toHaveLength(2);
+  expect(stored.projects[1].scenes[0]).toMatchObject({
+    id: "s-otro",
+    mediumId: "m1",
+    narrationId: "m2",
+  });
 });

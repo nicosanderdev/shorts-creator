@@ -238,3 +238,17 @@ body,
   padding-top: 10px;
   border-top: 1px solid currentColor;
 }
+
+.medios {
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.medio-item {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}

@@ -118,6 +118,27 @@ function holdFile(id: string, file: File) {
   heldFiles.set(id, { file, url });
 }
 
+function releaseFile(id: string) {
+  const held = heldFiles.get(id);
+  if (!held) return;
+  if (held.url) {
+    try {
+      URL.revokeObjectURL(held.url);
+    } catch {
+      // Ignore cleanup failures in environments without object URLs.
+    }
+  }
+  heldFiles.delete(id);
+}
+
+function isMediumUsed(projects: Project[], mediumId: string): boolean {
+  return projects.some((project) =>
+    project.scenes.some(
+      (scene) => scene.mediumId === mediumId || scene.narrationId === mediumId,
+    ),
+  );
+}
+
 function emptyUser(): UserDocument {
   return {
     id: crypto.randomUUID(),
@@ -730,9 +751,17 @@ export function Editor() {
   const chosen =
     visualMedia.find((medium) => medium.id === chosenMediumId) ?? visualMedia[0] ?? null;
   const selectedScene = project.scenes.find((scene) => scene.id === selectedSceneId) ?? null;
+  const libraryRef = useRef(user.library);
+  libraryRef.current = user.library;
 
   useEffect(() => {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(user));
+    const activeIds = new Set(user.library.map((medium) => medium.id));
+    for (const id of [...heldFiles.keys()]) {
+      if (!activeIds.has(id)) {
+        releaseFile(id);
+      }
+    }
   }, [user]);
 
   function onIncorporate(event: ChangeEvent<HTMLInputElement>) {
@@ -750,15 +779,24 @@ export function Editor() {
     }));
   }
 
+  function removeMedium(mediumId: string) {
+    setUser((current) =>
+      isMediumUsed(current.projects, mediumId)
+        ? current
+        : { ...current, library: current.library.filter((item) => item.id !== mediumId) },
+    );
+  }
+
   async function onAdd() {
     if (!chosen) return;
-    const birth = await sceneBirth(chosen);
-    if (!birth) return;
-    const sceneId = crypto.randomUUID();
     const mediumId = chosen.id;
+    const birth = await sceneBirth(chosen);
+    if (!birth || !libraryRef.current.some((item) => item.id === mediumId)) return;
+    const sceneId = crypto.randomUUID();
     setSelectedSceneId(sceneId);
     setMode("escena");
     setUser((current) => {
+      if (!current.library.some((item) => item.id === mediumId)) return current;
       const currentProject = current.projects[0];
       const scene: Scene = {
         id: sceneId,
@@ -904,12 +942,15 @@ export function Editor() {
             Incorporar
             <input type="file" onChange={onIncorporate} />
           </label>
-          <ul aria-label="Medios">
+          <ul aria-label="Medios" className="medios">
             {user.library.map((medium) => {
               const label = `${medium.name} ${medium.kind}`;
               return (
-                <li key={medium.id} aria-label={label}>
-                  {label}
+                <li key={medium.id} aria-label={label} className="medio-item">
+                  <span>{label}</span>
+                  <button type="button" onClick={() => removeMedium(medium.id)}>
+                    Quitar
+                  </button>
                 </li>
               );
             })}
