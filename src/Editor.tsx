@@ -582,7 +582,7 @@ function scenePreviewTime(scenes: Scene[], index: number): number {
   return start + fadeIn;
 }
 
-function bornFade(left: number, right: number): number {
+function tiempoInicialDelFundido(left: number, right: number): number {
   const shorter = Math.min(left, right);
   return shorter < 0.5 ? shorter : 0.5;
 }
@@ -607,7 +607,7 @@ function layerOpacity(local: number, duration: number, fadeIn: number, fadeOut: 
   return opacity;
 }
 
-type FrameLayer = {
+type CapaCuadro = {
   sceneId: string;
   medium: Medium | null;
   url: string | null;
@@ -620,11 +620,11 @@ type FrameLayer = {
   narrationUrl: string | null;
 };
 
-function frameLayers(scenes: Scene[], library: Medium[], moment: number): FrameLayer[] {
+function capasDelCuadro(scenes: Scene[], library: Medium[], moment: number): CapaCuadro[] {
   const starts = sceneStarts(scenes);
   const length = shortSeconds(scenes);
   const time = length === 0 ? 0 : Math.min(Math.max(moment, 0), length);
-  const layers: FrameLayer[] = [];
+  const layers: CapaCuadro[] = [];
   scenes.forEach((scene, index) => {
     const start = starts[index];
     const end = start + scene.duration;
@@ -679,26 +679,50 @@ function textStyle(text: SceneText, index: number): CSSProperties {
   };
 }
 
-function VisualLayer({ layer }: { layer: FrameLayer }) {
+function MedioEnCuadro({ layer }: { layer: CapaCuadro }) {
   const videoRef = useRef<HTMLVideoElement | null>(null);
+  const exit = layer.entry + layer.duration;
+
   useEffect(() => {
     const video = videoRef.current;
     if (!video) return;
     const nextTime = layer.entry + layer.local;
     if (!Number.isFinite(nextTime)) return;
     try {
-      video.currentTime = nextTime;
+      video.currentTime = Math.min(nextTime, exit);
     } catch {
       // A preview can seek only after the file has metadata.
     }
-  }, [layer.entry, layer.local, layer.url]);
+    if (video.currentTime >= exit) {
+      video.pause();
+      return;
+    }
+    try {
+      const pending = video.play?.();
+      if (pending && typeof pending.catch === "function") pending.catch(() => {});
+    } catch {
+      // The preview plays when the browser allows it.
+    }
+  }, [layer.entry, layer.local, layer.url, exit]);
 
   if (!layer.medium || !layer.url) return null;
   if (layer.medium.kind === "imagen") {
     return <img src={layer.url} alt={layer.medium.name} style={encaje} />;
   }
   if (layer.medium.kind === "video") {
-    return <video ref={videoRef} src={layer.url} muted autoPlay playsInline style={encaje} />;
+    return (
+      <video
+        ref={videoRef}
+        src={layer.url}
+        muted
+        autoPlay
+        playsInline
+        style={encaje}
+        onTimeUpdate={(event) => {
+          if (event.currentTarget.currentTime >= exit) event.currentTarget.pause();
+        }}
+      />
+    );
   }
   return null;
 }
@@ -783,7 +807,7 @@ function NarrationAudio({
   );
 }
 
-function SceneFrame({
+function EscenaElegida({
   scene,
   medium,
   layers,
@@ -805,7 +829,7 @@ function SceneFrame({
 }: {
   scene: Scene;
   medium: Medium | null;
-  layers: FrameLayer[];
+  layers: CapaCuadro[];
   visualMedia: Medium[];
   audioMedia: Medium[];
   nextCut: { kind: "corte directo" | "fundido"; time: number | null } | null;
@@ -847,7 +871,7 @@ function SceneFrame({
             key={layer.sceneId}
             style={{ position: "absolute", inset: 0, opacity: layer.opacity }}
           >
-            <VisualLayer layer={layer} />
+            <MedioEnCuadro layer={layer} />
             {layer.texts.map((text, index) => (
               <span key={text.id} className="cuadro-texto" style={textStyle(text, index)}>
                 {text.content}
@@ -1043,6 +1067,13 @@ export function Editor() {
   const moment = Math.min(playhead, shortLength);
   const libraryRef = useRef(user.library);
   libraryRef.current = user.library;
+  const editTicket = useRef(new Map<string, number>());
+
+  function takeTicket(sceneId: string) {
+    const ticket = (editTicket.current.get(sceneId) ?? 0) + 1;
+    editTicket.current.set(sceneId, ticket);
+    return ticket;
+  }
 
   useEffect(() => {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(user));
@@ -1182,13 +1213,16 @@ export function Editor() {
     if (!scene) return;
     const medium = user.library.find((item) => item.id === scene.mediumId);
     if (!medium || (medium.kind !== "imagen" && medium.kind !== "video")) return;
+    const ticket = takeTicket(sceneId);
     let fileDuration = Number.POSITIVE_INFINITY;
     if (medium.kind === "video") {
       const url = mediumUrl(medium.id);
       if (!url) return;
       fileDuration = await readVideoDuration(url);
+      if (editTicket.current.get(sceneId) !== ticket) return;
       if (!Number.isFinite(fileDuration) || fileDuration <= 0) return;
     }
+    if (editTicket.current.get(sceneId) !== ticket) return;
     const mediumId = medium.id;
     const kind = medium.kind;
     setUser((current) => {
@@ -1218,6 +1252,7 @@ export function Editor() {
     if (!scene || scene.mediumId === mediumId) return;
     const medium = user.library.find((item) => item.id === mediumId);
     if (!medium || (medium.kind !== "imagen" && medium.kind !== "video")) return;
+    const ticket = takeTicket(sceneId);
     if (medium.kind === "imagen") {
       updateScene(sceneId, (current) => ({ ...current, mediumId, entry: null }));
       return;
@@ -1225,6 +1260,7 @@ export function Editor() {
     const url = mediumUrl(medium.id);
     if (!url) return;
     const fileDuration = await readVideoDuration(url);
+    if (editTicket.current.get(sceneId) !== ticket) return;
     if (!Number.isFinite(fileDuration) || fileDuration <= 0) return;
     setUser((current) => {
       if (!current.library.some((item) => item.id === mediumId && item.kind === "video")) {
@@ -1258,7 +1294,7 @@ export function Editor() {
           : {
               ...following,
               cutWithPrevious: "fundido",
-              fadeTime: bornFade(currentProject.scenes[index].duration, following.duration),
+              fadeTime: tiempoInicialDelFundido(currentProject.scenes[index].duration, following.duration),
             };
       return {
         ...current,
@@ -1480,10 +1516,10 @@ export function Editor() {
         <section className="section" aria-label="Escena">
           <SectionHeading>Escena</SectionHeading>
           {selectedScene ? (
-            <SceneFrame
+            <EscenaElegida
               scene={selectedScene}
               medium={user.library.find((item) => item.id === selectedScene.mediumId) ?? null}
-              layers={frameLayers(project.scenes, user.library, moment)}
+              layers={capasDelCuadro(project.scenes, user.library, moment)}
               visualMedia={visualMedia}
               audioMedia={audioMedia}
               nextCut={nextCutOf(project.scenes, selectedScene.id)}

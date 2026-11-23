@@ -2736,3 +2736,33 @@ test("si el par se invierte el corte desaparece y el par nuevo nace en corte dir
   expect(within(moved).queryByRole("spinbutton", { name: "Tiempo del fundido" })).not.toBeInTheDocument();
   expect(screen.getByText("El short dura 6 s")).toBeInTheDocument();
 });
+
+test("el video del cuadro se detiene en la salida y no sigue hasta el final del archivo", async () => {
+  stubPlayback();
+  const user = userEvent.setup();
+  render(<Editor />);
+
+  await addMedium(user, fileWithDuration("clip.mp4", "video/mp4", 10));
+  const scene = await addSceneFrom(user, "clip.mp4");
+  const video = within(scene).getByRole("region", { name: "Cuadro" }).querySelector("video");
+  expect(video).not.toBeNull();
+  const pause = vi.fn();
+  Object.defineProperty(video!, "pause", { configurable: true, value: pause });
+  let time = 2.9;
+  Object.defineProperty(video!, "currentTime", {
+    configurable: true,
+    get: () => time,
+    set: (value: number) => {
+      time = value;
+    },
+  });
+
+  fireEvent.timeUpdate(video!);
+  expect(pause).not.toHaveBeenCalled();
+
+  time = 3;
+  fireEvent.timeUpdate(video!);
+  expect(pause).toHaveBeenCalledTimes(1);
+  expect(screen.getByText("El short dura 3 s")).toBeInTheDocument();
+  expect(within(scene).getByText("0 s")).toBeInTheDocument();
+});
