@@ -1,4 +1,5 @@
 import { Player, type PlayerRef } from "@remotion/player";
+import { canRenderMediaOnWeb, renderMediaOnWeb } from "@remotion/web-renderer";
 import { useEffect, useRef, useState, type ChangeEvent, type CSSProperties } from "react";
 import {
   ALTO_DEL_SHORT,
@@ -1059,18 +1060,22 @@ function VistaPrevia({
   moment,
   shortLength,
   playing,
+  aviso,
   onScrub,
   onPlay,
   onPause,
+  onRender,
 }: {
   scenes: Scene[];
   library: Medium[];
   moment: number;
   shortLength: number;
   playing: boolean;
+  aviso: "vacio" | "produciendo" | "fallo" | null;
   onScrub: (next: number) => void;
   onPlay: () => void;
   onPause: () => void;
+  onRender: () => void;
 }) {
   const playerRef = useRef<PlayerRef>(null);
   const cuadroRef = useRef<HTMLElement | null>(null);
@@ -1200,7 +1205,12 @@ function VistaPrevia({
       <button type="button" onClick={onPause} disabled={!playing}>
         Pausar
       </button>
-      <button type="button">Renderizar</button>
+      <button type="button" onClick={onRender} disabled={aviso === "produciendo"}>
+        Renderizar
+      </button>
+      {aviso === "vacio" ? <p>No hay escenas</p> : null}
+      {aviso === "produciendo" ? <p>Produciendo el archivo</p> : null}
+      {aviso === "fallo" ? <p>No se pudo producir el archivo</p> : null}
     </section>
   );
 }
@@ -1212,6 +1222,8 @@ export function Editor() {
   const [selectedSceneId, setSelectedSceneId] = useState<string | null>(null);
   const [playhead, setPlayhead] = useState(0);
   const [playing, setPlaying] = useState(false);
+  const [aviso, setAviso] = useState<"vacio" | "produciendo" | "fallo" | null>(null);
+  const sceneCount = useRef(0);
   const [apariencia, setApariencia] = useState(openApariencia);
   const [revision, setRevision] = useState(0);
   const project = user.projects[0];
@@ -1232,6 +1244,13 @@ export function Editor() {
   useEffect(() => {
     if (playing && moment >= shortLength) setPlaying(false);
   }, [playing, moment, shortLength]);
+
+  useEffect(() => {
+    if (project.scenes.length > sceneCount.current && (aviso === "vacio" || aviso === "fallo")) {
+      setAviso(null);
+    }
+    sceneCount.current = project.scenes.length;
+  }, [aviso, project.scenes.length]);
   const visualMedia = user.library.filter(
     (medium) => medium.kind === "imagen" || medium.kind === "video",
   );
@@ -1590,7 +1609,12 @@ export function Editor() {
               key={item.id}
               type="button"
               aria-pressed={mode === item.id}
-              onClick={() => setMode(item.id)}
+              disabled={aviso === "produciendo"}
+              onClick={() => {
+                if (aviso === "produciendo") return;
+                if (item.id !== "vista-previa") setAviso(null);
+                setMode(item.id);
+              }}
             >
               <Glyph />
               {item.label}
@@ -1722,12 +1746,71 @@ export function Editor() {
           moment={moment}
           shortLength={shortLength}
           playing={playing}
+          aviso={aviso}
           onScrub={setPlayhead}
           onPlay={() => {
-            if (moment >= shortLength) return;
+            if (aviso === "produciendo" || moment >= shortLength) return;
             setPlaying(true);
           }}
           onPause={() => setPlaying(false)}
+          onRender={() => {
+            if (aviso === "produciendo") return;
+            if (project.scenes.length === 0) {
+              setAviso("vacio");
+              return;
+            }
+            setPlaying(false);
+            const escenas = project.scenes.map((scene, index) => planoDeEscena(scene, index, user.library));
+            const durationInFrames = duracionDelShortEnFotogramas(escenas);
+            const archivo = {
+              container: "mp4" as const,
+              videoCodec: "h264" as const,
+              audioCodec: "aac" as const,
+              videoBitrate: "medium" as const,
+              audioBitrate: "medium" as const,
+              muted: false,
+              width: ANCHO_DEL_SHORT,
+              height: ALTO_DEL_SHORT,
+            };
+            void (async () => {
+              const ready = await canRenderMediaOnWeb(archivo);
+              if (!ready.canRender) {
+                setAviso("fallo");
+                return;
+              }
+              setAviso("produciendo");
+              try {
+                const result = await renderMediaOnWeb({
+                  composition: {
+                    id: "proyecto",
+                    component: ComposicionDelShort,
+                    durationInFrames,
+                    fps: FOTOGRAMAS_POR_SEGUNDO,
+                    width: ANCHO_DEL_SHORT,
+                    height: ALTO_DEL_SHORT,
+                    defaultProps: { escenas },
+                  },
+                  inputProps: { escenas },
+                  ...archivo,
+                  sampleRate: 48000,
+                  keyframeIntervalInSeconds: 5,
+                  hardwareAcceleration: "no-preference",
+                  allowHtmlInCanvas: false,
+                  metadata: null,
+                });
+                const blob = await result.getBlob();
+                const url = URL.createObjectURL(blob);
+                const anchor = document.createElement("a");
+                anchor.href = url;
+                anchor.download = "Proyecto.mp4";
+                anchor.click();
+                URL.revokeObjectURL(url);
+                setAviso(null);
+              } catch {
+                setAviso("fallo");
+              }
+            })();
+          }}
         />
       ) : null}
       {mode === "apariencia" ? (

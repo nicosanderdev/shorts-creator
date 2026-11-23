@@ -1,7 +1,21 @@
+import { canRenderMediaOnWeb, renderMediaOnWeb } from "@remotion/web-renderer";
 import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, expect, test, vi } from "vitest";
 import { Editor } from "./Editor";
+
+vi.mock("@remotion/web-renderer", () => ({
+  renderMediaOnWeb: vi.fn(async () => ({
+    getBlob: async () => new Blob(["mp4"], { type: "video/mp4" }),
+  })),
+  canRenderMediaOnWeb: vi.fn(async () => ({
+    canRender: true,
+    issues: [],
+    resolvedVideoCodec: "h264",
+    resolvedAudioCodec: "aac",
+    resolvedOutputTarget: "arraybuffer",
+  })),
+}));
 
 const fileDurations = new WeakMap<File, number>();
 let restorePlayback: (() => void) | null = null;
@@ -69,6 +83,19 @@ function stubPlayback() {
 afterEach(() => {
   vi.useRealTimers();
   restorePlayback?.();
+  vi.mocked(renderMediaOnWeb).mockReset();
+  vi.mocked(renderMediaOnWeb).mockImplementation(async () => ({
+    getBlob: async () => new Blob(["mp4"], { type: "video/mp4" }),
+    internalState: {} as never,
+  }));
+  vi.mocked(canRenderMediaOnWeb).mockReset();
+  vi.mocked(canRenderMediaOnWeb).mockResolvedValue({
+    canRender: true,
+    issues: [],
+    resolvedVideoCodec: "h264",
+    resolvedAudioCodec: "aac",
+    resolvedOutputTarget: "arraybuffer" as never,
+  });
 });
 
 const modes = ["Biblioteca", "Escenas", "Escena", "Apariencia", "Vista previa"] as const;
@@ -3659,4 +3686,155 @@ test("durante el fundido se ven las dos escenas, el video no se oye, y al pausar
   expect(within(cuadro).queryByText("Sale")).not.toBeInTheDocument();
   expect(within(cuadro).getByText("Entra")).toBeInTheDocument();
   expect(cuadro.querySelectorAll("video")).toHaveLength(1);
+});
+
+function catchDownload() {
+  const anchors: HTMLAnchorElement[] = [];
+  const click = HTMLAnchorElement.prototype.click;
+  HTMLAnchorElement.prototype.click = function () {
+    anchors.push(this);
+  };
+  return {
+    anchors,
+    restore() {
+      HTMLAnchorElement.prototype.click = click;
+    },
+  };
+}
+
+test("si la vista previa corre, Renderizar la pausa y deja el recorrido", async () => {
+  stubPlayback();
+  const user = userEvent.setup();
+  render(<Editor />);
+
+  await addMedium(user, fileWithDuration("clip.mp4", "video/mp4", 10));
+  await addSceneFrom(user, "clip.mp4");
+  await user.click(screen.getByRole("button", { name: "Vista previa" }));
+  const preview = screen.getByRole("region", { name: "Vista previa" });
+  const recorrido = within(preview).getByRole("slider", { name: "Recorrido" });
+
+  vi.useFakeTimers();
+  fireEvent.click(within(preview).getByRole("button", { name: "Reproducir" }));
+  await advancePlayback(400);
+  const at = (recorrido as HTMLInputElement).value;
+  vi.useRealTimers();
+
+  vi.mocked(renderMediaOnWeb).mockImplementation(() => new Promise(() => {}));
+  fireEvent.click(within(preview).getByRole("button", { name: "Renderizar" }));
+
+  expect(within(preview).getByRole("button", { name: "Pausar" })).toBeDisabled();
+  expect(recorrido).toHaveValue(at);
+});
+
+test("sin escenas, Renderizar se niega y se lee «No hay escenas»", async () => {
+  const user = userEvent.setup();
+  render(<Editor />);
+
+  await user.click(screen.getByRole("button", { name: "Vista previa" }));
+  const preview = screen.getByRole("region", { name: "Vista previa" });
+  await user.click(within(preview).getByRole("button", { name: "Renderizar" }));
+
+  expect(within(preview).getByText("No hay escenas")).toBeInTheDocument();
+  expect(renderMediaOnWeb).not.toHaveBeenCalled();
+  expect(screen.getByRole("button", { name: "Escenas" })).toBeEnabled();
+  await user.click(screen.getByRole("button", { name: "Escenas" }));
+  await user.click(screen.getByRole("button", { name: "Vista previa" }));
+  expect(screen.queryByText("No hay escenas")).not.toBeInTheDocument();
+});
+
+test("Renderizar descarga Proyecto.mp4 y el proyecto no cambia", async () => {
+  stubPlayback();
+  const user = userEvent.setup();
+  render(<Editor />);
+
+  await addMedium(user, fileWithDuration("clip.mp4", "video/mp4", 10));
+  await addSceneFrom(user, "clip.mp4");
+  await user.click(screen.getByRole("button", { name: "Escenas" }));
+  const before = within(screen.getByRole("list", { name: "Escenas" }))
+    .getAllByRole("listitem")
+    .map((item) => item.getAttribute("aria-label"));
+
+  await user.click(screen.getByRole("button", { name: "Vista previa" }));
+  const download = catchDownload();
+  await user.click(screen.getByRole("button", { name: "Renderizar" }));
+
+  expect(download.anchors).toHaveLength(1);
+  expect(download.anchors[0]).toHaveAttribute("download", "Proyecto.mp4");
+  download.restore();
+  expect(screen.queryByText("Produciendo el archivo")).not.toBeInTheDocument();
+  expect(screen.queryByText("Listo")).not.toBeInTheDocument();
+  expect(renderMediaOnWeb).toHaveBeenCalledWith(
+    expect.objectContaining({
+      container: "mp4",
+      videoCodec: "h264",
+      audioCodec: "aac",
+      videoBitrate: "medium",
+      audioBitrate: "medium",
+      sampleRate: 48000,
+      keyframeIntervalInSeconds: 5,
+      hardwareAcceleration: "no-preference",
+      muted: false,
+      allowHtmlInCanvas: false,
+      metadata: null,
+      composition: expect.objectContaining({ width: 1080, height: 1920, fps: 30 }),
+    }),
+  );
+
+  await user.click(screen.getByRole("button", { name: "Escenas" }));
+  expect(
+    within(screen.getByRole("list", { name: "Escenas" }))
+      .getAllByRole("listitem")
+      .map((item) => item.getAttribute("aria-label")),
+  ).toEqual(before);
+});
+
+test("mientras se produce el archivo el editor espera, y si falla se puede volver a pulsar", async () => {
+  stubPlayback();
+  const user = userEvent.setup();
+  render(<Editor />);
+
+  await addMedium(user, fileWithDuration("clip.mp4", "video/mp4", 10));
+  await addSceneFrom(user, "clip.mp4");
+  await user.click(screen.getByRole("button", { name: "Vista previa" }));
+
+  let finish: (value: { getBlob: () => Promise<Blob>; internalState: never }) => void = () => {};
+  vi.mocked(renderMediaOnWeb).mockImplementation(
+    () =>
+      new Promise((resolve) => {
+        finish = resolve;
+      }),
+  );
+
+  await user.click(screen.getByRole("button", { name: "Renderizar" }));
+  expect(await screen.findByText("Produciendo el archivo")).toBeInTheDocument();
+  expect(screen.getByRole("button", { name: "Renderizar" })).toBeDisabled();
+  expect(screen.getByRole("button", { name: "Escenas" })).toBeDisabled();
+  expect(screen.getByRole("region", { name: "Vista previa" })).toBeInTheDocument();
+
+  finish({ getBlob: async () => Promise.reject(new Error("codec")), internalState: {} as never });
+  expect(await screen.findByText("No se pudo producir el archivo")).toBeInTheDocument();
+  expect(screen.queryByText("Produciendo el archivo")).not.toBeInTheDocument();
+  expect(screen.getByRole("button", { name: "Renderizar" })).toBeEnabled();
+});
+
+test("si la producción no llega a arrancar, el fallo aparece directo", async () => {
+  stubPlayback();
+  const user = userEvent.setup();
+  render(<Editor />);
+
+  await addMedium(user, new File(["imagen"], "foto.png", { type: "image/png" }));
+  await addSceneFrom(user, "foto.png");
+  await user.click(screen.getByRole("button", { name: "Vista previa" }));
+  vi.mocked(canRenderMediaOnWeb).mockResolvedValue({
+    canRender: false,
+    issues: [],
+    resolvedVideoCodec: null,
+    resolvedAudioCodec: null,
+    resolvedOutputTarget: "arraybuffer" as never,
+  });
+
+  await user.click(screen.getByRole("button", { name: "Renderizar" }));
+  expect(await screen.findByText("No se pudo producir el archivo")).toBeInTheDocument();
+  expect(screen.queryByText("Produciendo el archivo")).not.toBeInTheDocument();
+  expect(renderMediaOnWeb).not.toHaveBeenCalled();
 });
