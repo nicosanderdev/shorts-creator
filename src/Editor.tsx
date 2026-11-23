@@ -1,4 +1,14 @@
+import { Player, type PlayerRef } from "@remotion/player";
 import { useEffect, useRef, useState, type ChangeEvent, type CSSProperties } from "react";
+import {
+  ALTO_DEL_SHORT,
+  ANCHO_DEL_SHORT,
+  ComposicionDelShort,
+  duracionDelShortEnFotogramas,
+  FOTOGRAMAS_POR_SEGUNDO,
+  fotogramas,
+  type EscenaPlana,
+} from "./composicion";
 import "./index.css";
 
 const STORAGE_KEY = "shorts-editor";
@@ -29,6 +39,7 @@ const modes = [
   { id: "escenas", label: "Escenas" },
   { id: "escena", label: "Escena" },
   { id: "apariencia", label: "Apariencia" },
+  { id: "vista-previa", label: "Vista previa" },
 ] as const;
 
 type Mode = (typeof modes)[number]["id"];
@@ -1047,6 +1058,147 @@ function EscenaElegida({
   );
 }
 
+function planoDeEscena(scene: Scene, index: number, library: Medium[]): EscenaPlana {
+  const medium = library.find((item) => item.id === scene.mediumId) ?? null;
+  const visual =
+    medium && medium.kind !== "audio" && mediumUrl(medium.id)
+      ? { kind: medium.kind, src: mediumUrl(medium.id) as string, name: medium.name }
+      : null;
+  const narration = scene.narrationId
+    ? library.find((item) => item.id === scene.narrationId && item.kind === "audio") ?? null
+    : null;
+  return {
+    id: scene.id,
+    duration: scene.duration,
+    fadeIn: index === 0 ? 0 : fadeSeconds(scene),
+    entry: scene.entry ?? 0,
+    visual,
+    texts: scene.texts,
+    narrationSrc: narration ? mediumUrl(narration.id) : null,
+  };
+}
+
+function FotogramaDeEntrada({ src, entry }: { src: string; entry: number }) {
+  const ref = useRef<HTMLVideoElement>(null);
+  useEffect(() => {
+    const video = ref.current;
+    if (!video) return;
+    const place = () => {
+      try {
+        video.currentTime = entry;
+      } catch {
+        // The still appears once the file can be seeked.
+      }
+      video.pause();
+    };
+    place();
+    video.addEventListener("loadedmetadata", place);
+    return () => video.removeEventListener("loadedmetadata", place);
+  }, [src, entry]);
+  return <video ref={ref} src={src} muted playsInline loop={false} style={encaje} />;
+}
+
+function VistaPrevia({
+  scenes,
+  library,
+  moment,
+  shortLength,
+  onScrub,
+}: {
+  scenes: Scene[];
+  library: Medium[];
+  moment: number;
+  shortLength: number;
+  onScrub: (next: number) => void;
+}) {
+  const playerRef = useRef<PlayerRef>(null);
+  const escenas = scenes.map((scene, index) => planoDeEscena(scene, index, library));
+  const durationInFrames = duracionDelShortEnFotogramas(escenas);
+  const frame =
+    durationInFrames === 0 ? 0 : Math.min(Math.max(fotogramas(moment), 0), durationInFrames - 1);
+
+  useEffect(() => {
+    const player = playerRef.current;
+    if (!player) return;
+    player.pause();
+    player.seekTo(frame);
+  }, [frame, durationInFrames]);
+
+  return (
+    <section className="section vista-previa" aria-label="Vista previa" style={{ flexGrow: 1, minHeight: 0 }}>
+      <section
+        className="cuadro"
+        aria-label="Cuadro"
+        style={{
+          flexGrow: 1,
+          flexShrink: 1,
+          flexBasis: "auto",
+          minHeight: 0,
+          aspectRatio: "9 / 16",
+          width: "auto",
+          maxWidth: "100%",
+          alignSelf: "center",
+        }}
+      >
+        {durationInFrames > 0 ? (
+          <Player
+            ref={playerRef}
+            component={ComposicionDelShort}
+            inputProps={{ escenas }}
+            durationInFrames={durationInFrames}
+            compositionWidth={ANCHO_DEL_SHORT}
+            compositionHeight={ALTO_DEL_SHORT}
+            fps={FOTOGRAMAS_POR_SEGUNDO}
+            initialFrame={frame}
+            autoPlay={false}
+            controls={false}
+            clickToPlay={false}
+            doubleClickToFullscreen={false}
+            spaceKeyToPlayOrPause={false}
+            loop={false}
+            defaultPremountInSeconds={0}
+            logLevel="error"
+            style={{ width: "100%", height: "100%" }}
+            errorFallback={({ error }) => <span>{error.message}</span>}
+          />
+        ) : null}
+      </section>
+      <ul aria-label="Escenas">
+        {escenas.map((escena, index) => {
+          const name = escena.visual?.name ?? "Escena";
+          return (
+            <li key={escena.id} aria-label={name}>
+              <button
+                type="button"
+                aria-label={name}
+                onClick={() => onScrub(sceneStarts(scenes)[index] ?? 0)}
+              >
+                {escena.visual?.kind === "imagen" ? (
+                  <img src={escena.visual.src} alt={escena.visual.name} style={encaje} />
+                ) : null}
+                {escena.visual?.kind === "video" ? (
+                  <FotogramaDeEntrada src={escena.visual.src} entry={escena.entry} />
+                ) : null}
+              </button>
+            </li>
+          );
+        })}
+      </ul>
+      <label>
+        Recorrido
+        <input
+          type="range"
+          min={0}
+          max={shortLength}
+          step="any"
+          value={Math.min(moment, shortLength)}
+          onChange={(event) => onScrub(Math.min(Math.max(Number(event.currentTarget.value), 0), shortLength))}
+        />
+      </label>
+    </section>
+  );
+}
+
 export function Editor() {
   const [user, setUser] = useState(openUser);
   const [mode, setMode] = useState<Mode>("escenas");
@@ -1540,6 +1692,15 @@ export function Editor() {
             <p>No hay una escena que editar.</p>
           )}
         </section>
+      ) : null}
+      {mode === "vista-previa" ? (
+        <VistaPrevia
+          scenes={project.scenes}
+          library={user.library}
+          moment={moment}
+          shortLength={shortLength}
+          onScrub={setPlayhead}
+        />
       ) : null}
       {mode === "apariencia" ? (
         <section className="section" aria-label="Apariencia">
