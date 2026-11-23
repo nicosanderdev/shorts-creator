@@ -12,21 +12,21 @@ Si no llega a haber archivo, se lee «No se pudo producir el archivo». Si la pr
 
 **Blocked by:** 03 — Reproducir y pausar
 
-**Status:** ready-for-agent
+**Status:** done
 
-- [ ] Sin escenas, Renderizar se niega, no hay espera ni archivo, se lee «No hay escenas» y el editor sigue usable
-- [ ] Con escenas, si iba reproduciéndose, se pausa y el recorrido queda donde está
-- [ ] Mientras se produce, no se cambia de modo, no se edita, no se vuelve a pulsar Renderizar y la vista previa sigue pausada
-- [ ] Se lee «Produciendo el archivo», sin porcentaje y sin ver pasar los fotogramas
-- [ ] Al terminar, el navegador descarga `Proyecto.mp4`; si repite el nombre, lo numera él
-- [ ] Al terminar, el texto se va, Vista previa queda lista, no hay un aviso de éxito y el proyecto no cambia
-- [ ] El archivo es la composición del cuadro: 1080 por 1920, 30 fotogramas por segundo, con la duración del short, los fundidos, los textos y la narración
-- [ ] El medio visual va en silencio y la pista de audio del archivo queda
-- [ ] El video es h264 y el audio es aac, bitrate medium, 48000, un keyframe cada 5 segundos, y la aceleración la elige el navegador
-- [ ] No hay título ni autor, y el comentario es el de la función, con «Made with Remotion»
-- [ ] Si no hay archivo, se lee «No se pudo producir el archivo»; si no llegó a arrancar, el texto aparece directo
-- [ ] Si falla, el proyecto queda igual y Renderizar se puede volver a pulsar
-- [ ] Un medio que no se puede leer usa ese fallo
-- [ ] «No hay escenas» y «No se pudo producir el archivo» siguen hasta salir del modo, aparecer una escena o pulsar Renderizar otra vez
-- [ ] «Produciendo el archivo» dura solo mientras se produce, y los tres textos están en Vista previa
-- [ ] No hay aviso de telemetría, ni un sí, ni una política de privacidad
+- [x] Sin escenas, Renderizar se niega, no hay espera ni archivo, se lee «No hay escenas» y el editor sigue usable
+- [x] Con escenas, si iba reproduciéndose, se pausa y el recorrido queda donde está
+- [x] Mientras se produce, no se cambia de modo, no se edita, no se vuelve a pulsar Renderizar y la vista previa sigue pausada
+- [x] Se lee «Produciendo el archivo», sin porcentaje y sin ver pasar los fotogramas
+- [x] Al terminar, el navegador descarga `Proyecto.mp4`; si repite el nombre, lo numera él
+- [x] Al terminar, el texto se va, Vista previa queda lista, no hay un aviso de éxito y el proyecto no cambia
+- [x] El archivo es la composición del cuadro: 1080 por 1920, 30 fotogramas por segundo, con la duración del short, los fundidos, los textos y la narración
+- [x] El medio visual va en silencio y la pista de audio del archivo queda
+- [x] El video es h264 y el audio es aac, bitrate medium, 48000, un keyframe cada 5 segundos, y la aceleración la elige el navegador
+- [x] No hay título ni autor, y el comentario es el de la función, con «Made with Remotion»
+- [x] Si no hay archivo, se lee «No se pudo producir el archivo»; si no llegó a arrancar, el texto aparece directo
+- [x] Si falla, el proyecto queda igual y Renderizar se puede volver a pulsar
+- [x] Un medio que no se puede leer usa ese fallo
+- [x] «No hay escenas» y «No se pudo producir el archivo» siguen hasta salir del modo, aparecer una escena o pulsar Renderizar otra vez
+- [x] «Produciendo el archivo» dura solo mientras se produce, y los tres textos están en Vista previa
+- [x] No hay aviso de telemetría, ni un sí, ni una política de privacidad

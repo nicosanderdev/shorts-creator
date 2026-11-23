@@ -10,17 +10,17 @@ Un video muestra su recorte desde la entrada. Un GIF no se repite para llenar la
 
 **Blocked by:** None — can start immediately
 
-**Status:** ready-for-agent
+**Status:** done
 
-- [ ] Vista previa es el último modo de la barra y en la pantalla hay un solo modo, con la barra visible
-- [ ] De arriba abajo están el cuadro, la lista de escenas y el recorrido
-- [ ] El cuadro usa la altura del modo, conserva la proporción del short y es más grande que el de Escena
-- [ ] El cuadro muestra el momento del recorrido, fundido incluido, con los textos y el medio visual en silencio
-- [ ] Con la vista previa detenida, mover el recorrido deja el cuadro en el momento nuevo, en silencio, y sigue pausada
-- [ ] Un gesto que no cambia el momento no arranca la reproducción
-- [ ] La lista sigue el orden del proyecto, con el encaje de siempre; en un video o un GIF, el fotograma de la entrada
-- [ ] Desde la lista no se añade, no se elimina y no se reordena, y no marca la escena del recorrido
-- [ ] Elegir una escena lleva el recorrido al inicio de esa escena y el proyecto queda igual
-- [ ] Un video muestra su recorte desde la entrada, y un GIF no se repite para llenar la escena
-- [ ] El medio llena el cuadro, centrado, sin bandas, y el encaje no es un control
-- [ ] Sin escenas, la duración es cero, la lista está vacía, el cuadro no tiene nada que mostrar y el recorrido no tiene otro momento
+- [x] Vista previa es el último modo de la barra y en la pantalla hay un solo modo, con la barra visible
+- [x] De arriba abajo están el cuadro, la lista de escenas y el recorrido
+- [x] El cuadro usa la altura del modo, conserva la proporción del short y es más grande que el de Escena
+- [x] El cuadro muestra el momento del recorrido, fundido incluido, con los textos y el medio visual en silencio
+- [x] Con la vista previa detenida, mover el recorrido deja el cuadro en el momento nuevo, en silencio, y sigue pausada
+- [x] Un gesto que no cambia el momento no arranca la reproducción
+- [x] La lista sigue el orden del proyecto, con el encaje de siempre; en un video o un GIF, el fotograma de la entrada
+- [x] Desde la lista no se añade, no se elimina y no se reordena, y no marca la escena del recorrido
+- [x] Elegir una escena lleva el recorrido al inicio de esa escena y el proyecto queda igual
+- [x] Un video muestra su recorte desde la entrada, y un GIF no se repite para llenar la escena
+- [x] El medio llena el cuadro, centrado, sin bandas, y el encaje no es un control
+- [x] Sin escenas, la duración es cero, la lista está vacía, el cuadro no tiene nada que mostrar y el recorrido no tiene otro momento

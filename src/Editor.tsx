@@ -1086,9 +1086,9 @@ function VistaPrevia({
 
   useEffect(() => {
     const player = playerRef.current;
-    if (!player) return;
+    if (!player || playing) return;
     player.seekTo(frame);
-  }, [frame, durationInFrames]);
+  }, [frame, durationInFrames, playing]);
 
   useEffect(() => {
     const player = playerRef.current;
@@ -1122,6 +1122,7 @@ function VistaPrevia({
           flexBasis: "auto",
           minHeight: 0,
           aspectRatio: "9 / 16",
+          containerType: "size",
           width: "auto",
           maxWidth: "100%",
           alignSelf: "center",
@@ -1147,7 +1148,7 @@ function VistaPrevia({
             defaultPremountInSeconds={0}
             logLevel="error"
             style={{ width: "100%", height: "100%" }}
-            errorFallback={({ error }) => <span>{error.message}</span>}
+            errorFallback={() => null}
           />
         ) : null}
       </section>
@@ -1194,11 +1195,12 @@ function VistaPrevia({
       <button
         type="button"
         onClick={(event) => {
-          if (moment >= shortLength) return;
+          if (aviso === "produciendo" || moment >= shortLength) return;
+          playerRef.current?.seekTo(frame);
           onPlay();
           playerRef.current?.play(event);
         }}
-        disabled={playing}
+        disabled={playing || aviso === "produciendo"}
       >
         Reproducir
       </button>
@@ -1804,7 +1806,7 @@ export function Editor() {
                 anchor.href = url;
                 anchor.download = "Proyecto.mp4";
                 anchor.click();
-                URL.revokeObjectURL(url);
+                window.setTimeout(() => URL.revokeObjectURL(url), 60_000);
                 setAviso(null);
               } catch {
                 setAviso("fallo");

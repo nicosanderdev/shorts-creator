@@ -8,20 +8,20 @@ La posición y el tamaño del texto se editan en porcentaje del cuadro. Un texto
 
 **Blocked by:** None — can start immediately
 
-**Status:** ready-for-agent
+**Status:** done
 
-- [ ] El cuadro de Escena mide 120 px de ancho, conserva la proporción del short y queda al lado de los datos
-- [ ] Muestra el inicio de la escena elegida, sola y a opacidad plena, con el encaje y los textos
-- [ ] En un video o un GIF ese cuadro es el fotograma de la entrada, quieto; en una imagen, la imagen
-- [ ] El recorrido no está en Escena y no mueve ese cuadro
-- [ ] Un fundido no trae la escena vecina a ese cuadro, aunque el bloque se esté editando
-- [ ] Sin escena elegida, el cuadro no tiene nada que mostrar
-- [ ] El bloque Fundido está arriba de los textos, elige corte directo o fundido y, si es fundido, el tiempo
-- [ ] El bloque es el corte con la escena siguiente, y en la última escena no está
-- [ ] El fundido nace en medio segundo, o en la escena más corta si esa dura menos
-- [ ] Pedir cero, o más tiempo del que cabe, se niega y sigue el tiempo anterior
-- [ ] Volver a corte directo olvida el tiempo
-- [ ] Un texto nuevo muestra 50, 50 y 8, y el documento guarda el centro y ocho centésimos de la altura
-- [ ] Pedir un tamaño de cero o menos se niega y sigue el tamaño anterior
-- [ ] La posición puede caer fuera de 0 a 100
-- [ ] La duración de la escena y el tiempo del fundido siguen en segundos
+- [x] El cuadro de Escena mide 120 px de ancho, conserva la proporción del short y queda al lado de los datos
+- [x] Muestra el inicio de la escena elegida, sola y a opacidad plena, con el encaje y los textos
+- [x] En un video o un GIF ese cuadro es el fotograma de la entrada, quieto; en una imagen, la imagen
+- [x] El recorrido no está en Escena y no mueve ese cuadro
+- [x] Un fundido no trae la escena vecina a ese cuadro, aunque el bloque se esté editando
+- [x] Sin escena elegida, el cuadro no tiene nada que mostrar
+- [x] El bloque Fundido está arriba de los textos, elige corte directo o fundido y, si es fundido, el tiempo
+- [x] El bloque es el corte con la escena siguiente, y en la última escena no está
+- [x] El fundido nace en medio segundo, o en la escena más corta si esa dura menos
+- [x] Pedir cero, o más tiempo del que cabe, se niega y sigue el tiempo anterior
+- [x] Volver a corte directo olvida el tiempo
+- [x] Un texto nuevo muestra 50, 50 y 8, y el documento guarda el centro y ocho centésimos de la altura
+- [x] Pedir un tamaño de cero o menos se niega y sigue el tamaño anterior
+- [x] La posición puede caer fuera de 0 a 100
+- [x] La duración de la escena y el tiempo del fundido siguen en segundos

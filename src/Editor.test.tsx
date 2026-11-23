@@ -3808,6 +3808,7 @@ test("mientras se produce el archivo el editor espera, y si falla se puede volve
   await user.click(screen.getByRole("button", { name: "Renderizar" }));
   expect(await screen.findByText("Produciendo el archivo")).toBeInTheDocument();
   expect(screen.getByRole("button", { name: "Renderizar" })).toBeDisabled();
+  expect(screen.getByRole("button", { name: "Reproducir" })).toBeDisabled();
   expect(screen.getByRole("button", { name: "Escenas" })).toBeDisabled();
   expect(screen.getByRole("region", { name: "Vista previa" })).toBeInTheDocument();
 
