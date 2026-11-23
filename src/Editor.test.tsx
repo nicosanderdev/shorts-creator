@@ -29,6 +29,15 @@ function stubPlayback() {
 
   const prototype = HTMLMediaElement.prototype;
   const previousSrc = Object.getOwnPropertyDescriptor(prototype, "src");
+  const previousPlay = prototype.play;
+  const previousPause = prototype.pause;
+  prototype.play = function playMedia() {
+    Object.defineProperty(this, "paused", { configurable: true, get: () => false });
+    return Promise.resolve();
+  };
+  prototype.pause = function pauseMedia() {
+    Object.defineProperty(this, "paused", { configurable: true, get: () => true });
+  };
   Object.defineProperty(prototype, "src", {
     configurable: true,
     get() {
@@ -51,6 +60,8 @@ function stubPlayback() {
     else Reflect.deleteProperty(URL, "revokeObjectURL");
     if (previousSrc) Object.defineProperty(prototype, "src", previousSrc);
     else Reflect.deleteProperty(prototype, "src");
+    prototype.play = previousPlay;
+    prototype.pause = previousPause;
     restorePlayback = null;
   };
 }
@@ -3110,8 +3121,8 @@ test("con la vista previa detenida, mover el recorrido deja el cuadro en el mome
   const preview = screen.getByRole("region", { name: "Vista previa" });
   const cuadro = within(preview).getByRole("region", { name: "Cuadro" });
   const recorrido = within(preview).getByRole("slider", { name: "Recorrido" });
-  expect(within(preview).queryByRole("button", { name: "Reproducir" })).not.toBeInTheDocument();
-  expect(within(preview).queryByRole("button", { name: "Pausar" })).not.toBeInTheDocument();
+  expect(within(preview).getByRole("button", { name: "Reproducir" })).toBeEnabled();
+  expect(within(preview).getByRole("button", { name: "Pausar" })).toBeDisabled();
 
   fireEvent.change(recorrido, { target: { value: "0" } });
   expect(within(cuadro).getByRole("img", { name: "foto.png" })).toBeInTheDocument();
@@ -3129,7 +3140,8 @@ test("con la vista previa detenida, mover el recorrido deja el cuadro en el mome
   });
   expect(recorrido).toHaveValue("4");
   expectSilent(cuadro);
-  expect(within(preview).queryByRole("button", { name: "Reproducir" })).not.toBeInTheDocument();
+  expect(within(preview).getByRole("button", { name: "Reproducir" })).toBeEnabled();
+  expect(within(preview).getByRole("button", { name: "Pausar" })).toBeDisabled();
 });
 
 test("un gesto que no cambia el momento no arranca la reproducción", async () => {
@@ -3155,8 +3167,8 @@ test("un gesto que no cambia el momento no arranca la reproducción", async () =
   expect(video).toHaveProperty("paused", true);
   expect(video).toHaveProperty("muted", true);
   expect(recorrido).toHaveValue("0");
-  expect(within(preview).queryByRole("button", { name: "Reproducir" })).not.toBeInTheDocument();
-  expect(within(preview).queryByRole("button", { name: "Pausar" })).not.toBeInTheDocument();
+  expect(within(preview).getByRole("button", { name: "Reproducir" })).toBeEnabled();
+  expect(within(preview).getByRole("button", { name: "Pausar" })).toBeDisabled();
   expectSilent(cuadro);
 });
 
@@ -3399,4 +3411,252 @@ test("sin escenas, la duración es cero, la lista está vacía, el cuadro no tie
   fireEvent.change(recorrido, { target: { value: "3" } });
   expect(recorrido).toHaveValue("0");
   expect(cuadro).toBeEmptyDOMElement();
+});
+
+function playingAudios(cuadro: HTMLElement) {
+  return [...cuadro.querySelectorAll("audio")].filter((audio) => audio.paused === false);
+}
+
+async function advancePlayback(ms: number) {
+  await act(async () => {
+    await vi.advanceTimersByTimeAsync(ms);
+  });
+}
+
+test("Reproducir toma el short desde el recorrido y el recorrido avanza", async () => {
+  stubPlayback();
+  const user = userEvent.setup();
+  render(<Editor />);
+
+  await addMedium(user, fileWithDuration("clip.mp4", "video/mp4", 10));
+  await addMedium(user, fileWithDuration("voz.mp3", "audio/mpeg", 10));
+  const scene = await addSceneFrom(user, "clip.mp4");
+  const narration = within(scene).getByRole("combobox", { name: "Narración" });
+  await user.selectOptions(narration, within(narration).getByRole("option", { name: "voz.mp3" }));
+
+  await user.click(screen.getByRole("button", { name: "Vista previa" }));
+  const preview = screen.getByRole("region", { name: "Vista previa" });
+  const recorrido = within(preview).getByRole("slider", { name: "Recorrido" });
+  fireEvent.change(recorrido, { target: { value: "1" } });
+
+  vi.useFakeTimers();
+  fireEvent.click(within(preview).getByRole("button", { name: "Reproducir" }));
+  await advancePlayback(1000);
+
+  expect(Number(recorrido.getAttribute("value") ?? (recorrido as HTMLInputElement).value)).toBeCloseTo(2, 5);
+  expect(within(preview).getByRole("button", { name: "Pausar" })).toBeEnabled();
+  expect(within(preview).getByRole("button", { name: "Reproducir" })).toBeDisabled();
+  expect(within(preview).getByRole("button", { name: "Renderizar" })).toBeEnabled();
+});
+
+test("al llegar al final la reproducción se detiene, el recorrido queda ahí y no hay bucle", async () => {
+  stubPlayback();
+  const user = userEvent.setup();
+  render(<Editor />);
+
+  await addMedium(user, fileWithDuration("clip.mp4", "video/mp4", 10));
+  await addSceneFrom(user, "clip.mp4");
+  await user.click(screen.getByRole("button", { name: "Vista previa" }));
+  const preview = screen.getByRole("region", { name: "Vista previa" });
+  const recorrido = within(preview).getByRole("slider", { name: "Recorrido" });
+  fireEvent.change(recorrido, { target: { value: "2.8" } });
+
+  vi.useFakeTimers();
+  fireEvent.click(within(preview).getByRole("button", { name: "Reproducir" }));
+  await advancePlayback(1000);
+
+  expect(recorrido).toHaveValue("3");
+  expect(within(preview).getByRole("button", { name: "Reproducir" })).toBeEnabled();
+  expect(within(preview).getByRole("button", { name: "Pausar" })).toBeDisabled();
+
+  fireEvent.click(within(preview).getByRole("button", { name: "Reproducir" }));
+  await advancePlayback(500);
+  expect(recorrido).toHaveValue("3");
+  expect(preview).not.toHaveTextContent("No hay escenas");
+  expect(preview).not.toHaveTextContent("No se pudo");
+});
+
+test("Pausar deja el recorrido donde está y calla la narración", async () => {
+  stubPlayback();
+  const user = userEvent.setup();
+  render(<Editor />);
+
+  await addMedium(user, fileWithDuration("clip.mp4", "video/mp4", 10));
+  await addMedium(user, fileWithDuration("voz.mp3", "audio/mpeg", 10));
+  const scene = await addSceneFrom(user, "clip.mp4");
+  const narration = within(scene).getByRole("combobox", { name: "Narración" });
+  await user.selectOptions(narration, within(narration).getByRole("option", { name: "voz.mp3" }));
+  await user.click(screen.getByRole("button", { name: "Vista previa" }));
+
+  const preview = screen.getByRole("region", { name: "Vista previa" });
+  const cuadro = within(preview).getByRole("region", { name: "Cuadro" });
+  const recorrido = within(preview).getByRole("slider", { name: "Recorrido" });
+
+  vi.useFakeTimers();
+  fireEvent.click(within(preview).getByRole("button", { name: "Reproducir" }));
+  await advancePlayback(500);
+  fireEvent.click(within(preview).getByRole("button", { name: "Pausar" }));
+  const pausedAt = Number((recorrido as HTMLInputElement).value);
+
+  await advancePlayback(500);
+  expect(Number((recorrido as HTMLInputElement).value)).toBeCloseTo(pausedAt, 5);
+  expect(within(preview).getByRole("button", { name: "Reproducir" })).toBeEnabled();
+  expect(within(preview).getByRole("button", { name: "Pausar" })).toBeDisabled();
+  expect(playingAudios(cuadro)).toHaveLength(0);
+});
+
+test("sin escenas y al final, Reproducir sigue listo y el pulso se niega, sin un texto", async () => {
+  const user = userEvent.setup();
+  render(<Editor />);
+
+  await user.click(screen.getByRole("button", { name: "Vista previa" }));
+  const preview = screen.getByRole("region", { name: "Vista previa" });
+  const reproducir = within(preview).getByRole("button", { name: "Reproducir" });
+  expect(reproducir).toBeEnabled();
+  expect(within(preview).getByRole("button", { name: "Pausar" })).toBeDisabled();
+  await user.click(reproducir);
+  expect(reproducir).toBeEnabled();
+  expect(within(preview).getByRole("button", { name: "Pausar" })).toBeDisabled();
+  expect(preview).not.toHaveTextContent("No hay escenas");
+  expect(preview).not.toHaveTextContent("No se pudo");
+});
+
+test("mover el recorrido mientras corre pausa, el cuadro sigue el momento en silencio y un gesto vacío no pausa", async () => {
+  stubPlayback();
+  const user = userEvent.setup();
+  render(<Editor />);
+
+  await addMedium(user, fileWithDuration("sale.mp4", "video/mp4", 10));
+  await addMedium(user, fileWithDuration("entra.mp4", "video/mp4", 10));
+  await addMedium(user, fileWithDuration("voz.mp3", "audio/mpeg", 10));
+  let scene = await addSceneFrom(user, "sale.mp4");
+  await user.click(within(scene).getByRole("button", { name: "Añadir texto" }));
+  await user.clear(within(scene).getByRole("textbox", { name: "Contenido" }));
+  await user.type(within(scene).getByRole("textbox", { name: "Contenido" }), "Sale");
+  const narration = within(scene).getByRole("combobox", { name: "Narración" });
+  await user.selectOptions(narration, within(narration).getByRole("option", { name: "voz.mp3" }));
+  scene = await addSceneFrom(user, "entra.mp4");
+  await user.click(within(scene).getByRole("button", { name: "Añadir texto" }));
+  await user.clear(within(scene).getByRole("textbox", { name: "Contenido" }));
+  await user.type(within(scene).getByRole("textbox", { name: "Contenido" }), "Entra");
+  scene = await openScene(user, "sale.mp4");
+  await chooseCut(user, scene, "fundido");
+  fireEvent.input(within(scene).getByRole("spinbutton", { name: "Tiempo del fundido" }), {
+    target: { value: "1" },
+  });
+
+  await user.click(screen.getByRole("button", { name: "Vista previa" }));
+  const preview = screen.getByRole("region", { name: "Vista previa" });
+  const cuadro = within(preview).getByRole("region", { name: "Cuadro" });
+  const recorrido = within(preview).getByRole("slider", { name: "Recorrido" });
+
+  vi.useFakeTimers();
+  fireEvent.click(within(preview).getByRole("button", { name: "Reproducir" }));
+  await advancePlayback(200);
+  fireEvent.change(recorrido, { target: { value: (recorrido as HTMLInputElement).value } });
+  expect(within(preview).getByRole("button", { name: "Pausar" })).toBeEnabled();
+
+  fireEvent.change(recorrido, { target: { value: "2.5" } });
+  expect(recorrido).toHaveValue("2.5");
+  expect(within(preview).getByRole("button", { name: "Pausar" })).toBeDisabled();
+  expect(within(preview).getByRole("button", { name: "Reproducir" })).toBeEnabled();
+  expect(within(cuadro).getByText("Sale")).toBeInTheDocument();
+  expect(within(cuadro).getByText("Entra")).toBeInTheDocument();
+  expect(playingAudios(cuadro)).toHaveLength(0);
+  for (const video of cuadro.querySelectorAll("video")) {
+    expect(video).toHaveProperty("muted", true);
+  }
+});
+
+test("elegir una escena mientras corre lleva el recorrido a su inicio, pausa y deja el proyecto igual", async () => {
+  stubPlayback();
+  const user = userEvent.setup();
+  render(<Editor />);
+
+  await addMedium(user, fileWithDuration("sale.mp4", "video/mp4", 10));
+  await addMedium(user, fileWithDuration("entra.mp4", "video/mp4", 10));
+  await addSceneFrom(user, "sale.mp4");
+  await addSceneFrom(user, "entra.mp4");
+  await user.click(screen.getByRole("button", { name: "Escenas" }));
+  const before = within(screen.getByRole("list", { name: "Escenas" }))
+    .getAllByRole("listitem")
+    .map((item) => item.getAttribute("aria-label"));
+
+  await user.click(screen.getByRole("button", { name: "Vista previa" }));
+  const preview = screen.getByRole("region", { name: "Vista previa" });
+  const recorrido = within(preview).getByRole("slider", { name: "Recorrido" });
+
+  vi.useFakeTimers();
+  fireEvent.click(within(preview).getByRole("button", { name: "Reproducir" }));
+  await advancePlayback(400);
+  fireEvent.click(within(preview).getByRole("button", { name: "entra.mp4" }));
+
+  expect(recorrido).toHaveValue("3");
+  expect(within(preview).getByRole("button", { name: "Pausar" })).toBeDisabled();
+  expect(within(preview).queryByRole("button", { name: "Eliminar" })).not.toBeInTheDocument();
+
+  vi.useRealTimers();
+  await user.click(screen.getByRole("button", { name: "Escenas" }));
+  expect(
+    within(screen.getByRole("list", { name: "Escenas" }))
+      .getAllByRole("listitem")
+      .map((item) => item.getAttribute("aria-label")),
+  ).toEqual(before);
+});
+
+test("durante el fundido se ven las dos escenas, el video no se oye, y al pausar o recorrer la narración calla", async () => {
+  stubPlayback();
+  const user = userEvent.setup();
+  render(<Editor />);
+
+  await addMedium(user, fileWithDuration("sale.mp4", "video/mp4", 10));
+  await addMedium(user, fileWithDuration("entra.mp4", "video/mp4", 10));
+  await addMedium(user, fileWithDuration("voz-sale.mp3", "audio/mpeg", 10));
+  await addMedium(user, fileWithDuration("voz-entra.mp3", "audio/mpeg", 10));
+
+  let scene = await addSceneFrom(user, "sale.mp4");
+  await user.click(within(scene).getByRole("button", { name: "Añadir texto" }));
+  await user.clear(within(scene).getByRole("textbox", { name: "Contenido" }));
+  await user.type(within(scene).getByRole("textbox", { name: "Contenido" }), "Sale");
+  let narration = within(scene).getByRole("combobox", { name: "Narración" });
+  await user.selectOptions(narration, within(narration).getByRole("option", { name: "voz-sale.mp3" }));
+
+  scene = await addSceneFrom(user, "entra.mp4");
+  await user.click(within(scene).getByRole("button", { name: "Añadir texto" }));
+  await user.clear(within(scene).getByRole("textbox", { name: "Contenido" }));
+  await user.type(within(scene).getByRole("textbox", { name: "Contenido" }), "Entra");
+  narration = within(scene).getByRole("combobox", { name: "Narración" });
+  await user.selectOptions(narration, within(narration).getByRole("option", { name: "voz-entra.mp3" }));
+
+  scene = await openScene(user, "sale.mp4");
+  await chooseCut(user, scene, "fundido");
+  fireEvent.input(within(scene).getByRole("spinbutton", { name: "Tiempo del fundido" }), {
+    target: { value: "1" },
+  });
+
+  await user.click(screen.getByRole("button", { name: "Vista previa" }));
+  const preview = screen.getByRole("region", { name: "Vista previa" });
+  const cuadro = within(preview).getByRole("region", { name: "Cuadro" });
+  const recorrido = within(preview).getByRole("slider", { name: "Recorrido" });
+  fireEvent.change(recorrido, { target: { value: "2.5" } });
+
+  vi.useFakeTimers();
+  fireEvent.click(within(preview).getByRole("button", { name: "Reproducir" }));
+  await advancePlayback(300);
+
+  expect(within(cuadro).getByText("Sale")).toBeInTheDocument();
+  expect(within(cuadro).getByText("Entra")).toBeInTheDocument();
+  expect(cuadro.querySelectorAll("video").length).toBe(2);
+  for (const video of cuadro.querySelectorAll("video")) {
+    expect(video).toHaveProperty("muted", true);
+    expect(video).toHaveProperty("loop", false);
+  }
+  fireEvent.click(within(preview).getByRole("button", { name: "Pausar" }));
+  expect(playingAudios(cuadro)).toHaveLength(0);
+
+  fireEvent.change(recorrido, { target: { value: "4" } });
+  expect(playingAudios(cuadro)).toHaveLength(0);
+  expect(within(cuadro).queryByText("Sale")).not.toBeInTheDocument();
+  expect(within(cuadro).getByText("Entra")).toBeInTheDocument();
+  expect(cuadro.querySelectorAll("video")).toHaveLength(1);
 });

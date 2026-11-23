@@ -1073,6 +1073,7 @@ function VistaPrevia({
   onPause: () => void;
 }) {
   const playerRef = useRef<PlayerRef>(null);
+  const cuadroRef = useRef<HTMLElement | null>(null);
   const escenas = scenes.map((scene, index) => planoDeEscena(scene, index, library));
   const durationInFrames = duracionDelShortEnFotogramas(escenas);
   const frame =
@@ -1086,15 +1087,29 @@ function VistaPrevia({
 
   useEffect(() => {
     const player = playerRef.current;
-    if (!player) return;
-    if (playing) player.play();
-    else player.pause();
+    if (!player || playing) return;
+    player.pause();
   }, [playing]);
+
+  useEffect(() => {
+    const root = cuadroRef.current;
+    if (!root) return;
+    for (const audio of root.querySelectorAll("audio")) {
+      const src = audio.getAttribute("src") ?? "";
+      const heard = playing && src.startsWith("blob:");
+      if (heard) {
+        if (audio.paused) void audio.play();
+      } else if (!audio.paused) {
+        audio.pause();
+      }
+    }
+  });
 
   return (
     <section className="section vista-previa" aria-label="Vista previa" style={{ flexGrow: 1, minHeight: 0 }}>
       <section
         className="cuadro"
+        ref={cuadroRef}
         aria-label="Cuadro"
         style={{
           flexGrow: 1,
@@ -1171,7 +1186,15 @@ function VistaPrevia({
           }}
         />
       </label>
-      <button type="button" onClick={onPlay} disabled={playing}>
+      <button
+        type="button"
+        onClick={(event) => {
+          if (moment >= shortLength) return;
+          onPlay();
+          playerRef.current?.play(event);
+        }}
+        disabled={playing}
+      >
         Reproducir
       </button>
       <button type="button" onClick={onPause} disabled={!playing}>
