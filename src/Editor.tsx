@@ -50,7 +50,8 @@ type Scene = {
   mediumId: string;
   duration: number;
   entry: number | null;
-  cutWithPrevious: "corte directo" | null;
+  cutWithPrevious: "corte directo" | "fundido" | null;
+  fadeTime: number | null;
   texts: SceneText[];
   narrationId: string | null;
 };
@@ -183,7 +184,24 @@ function parseScene(value: unknown): Scene | null {
   else if (typeof record.entry === "number" && Number.isFinite(record.entry) && record.entry >= 0) {
     entry = record.entry;
   } else return null;
-  if (record.cutWithPrevious !== null && record.cutWithPrevious !== "corte directo") return null;
+  let cutWithPrevious: Scene["cutWithPrevious"];
+  if (record.cutWithPrevious === null) cutWithPrevious = null;
+  else if (record.cutWithPrevious === "corte directo") cutWithPrevious = "corte directo";
+  else if (record.cutWithPrevious === "fundido") cutWithPrevious = "fundido";
+  else return null;
+  let fadeTime: number | null;
+  if (cutWithPrevious === "fundido") {
+    if (
+      typeof record.fadeTime !== "number" ||
+      !Number.isFinite(record.fadeTime) ||
+      record.fadeTime <= 0
+    ) {
+      return null;
+    }
+    fadeTime = record.fadeTime;
+  } else if (record.fadeTime === undefined || record.fadeTime === null) {
+    fadeTime = null;
+  } else return null;
   if (record.texts !== undefined && !Array.isArray(record.texts)) return null;
   const texts: SceneText[] = [];
   for (const item of record.texts ?? []) {
@@ -201,7 +219,8 @@ function parseScene(value: unknown): Scene | null {
     mediumId: record.mediumId,
     duration: record.duration,
     entry,
-    cutWithPrevious: record.cutWithPrevious === null ? null : "corte directo",
+    cutWithPrevious,
+    fadeTime,
     texts,
     narrationId,
   };
@@ -216,6 +235,9 @@ function parseProject(value: unknown): Project | null {
     const scene = parseScene(item);
     if (!scene) return null;
     scenes.push(scene);
+  }
+  if (scenes.length > 0 && scenes[0].cutWithPrevious !== null) {
+    scenes[0] = { ...scenes[0], cutWithPrevious: null, fadeTime: null };
   }
   return { name: "Proyecto", scenes };
 }
@@ -494,8 +516,115 @@ async function sceneBirth(medium: Medium): Promise<{ duration: number; entry: nu
   return { duration: fileDuration >= 3 ? 3 : fileDuration, entry: 0 };
 }
 
+function fadeSeconds(scene: Scene): number {
+  if (scene.cutWithPrevious !== "fundido" || scene.fadeTime === null) return 0;
+  return scene.fadeTime;
+}
+
+function sceneStarts(scenes: Scene[]): number[] {
+  const starts: number[] = [];
+  let start = 0;
+  for (let index = 0; index < scenes.length; index += 1) {
+    starts.push(start);
+    const overlap = index + 1 < scenes.length ? fadeSeconds(scenes[index + 1]) : 0;
+    start += scenes[index].duration - overlap;
+  }
+  return starts;
+}
+
 function shortSeconds(scenes: Scene[]): number {
-  return scenes.reduce((total, scene) => total + scene.duration, 0);
+  if (scenes.length === 0) return 0;
+  const starts = sceneStarts(scenes);
+  return starts[starts.length - 1] + scenes[scenes.length - 1].duration;
+}
+
+function shrinkFades(scenes: Scene[]): Scene[] {
+  return scenes.map((scene, index) => {
+    if (index === 0 || scene.cutWithPrevious !== "fundido" || scene.fadeTime === null) return scene;
+    const limit = Math.min(scenes[index - 1].duration, scene.duration);
+    if (scene.fadeTime <= limit) return scene;
+    return { ...scene, fadeTime: limit };
+  });
+}
+
+function scenePreviewTime(scenes: Scene[], index: number): number {
+  const start = sceneStarts(scenes)[index] ?? 0;
+  const scene = scenes[index];
+  if (!scene || index === 0) return start;
+  const fadeIn = fadeSeconds(scene);
+  if (fadeIn <= 0 || fadeIn >= scene.duration) return start;
+  return start + fadeIn;
+}
+
+function bornFade(left: number, right: number): number {
+  const shorter = Math.min(left, right);
+  return shorter < 0.5 ? shorter : 0.5;
+}
+
+function nextCutOf(
+  scenes: Scene[],
+  sceneId: string,
+): { kind: "corte directo" | "fundido"; time: number | null } | null {
+  const index = scenes.findIndex((item) => item.id === sceneId);
+  const following = index >= 0 ? scenes[index + 1] : undefined;
+  if (!following) return null;
+  if (following.cutWithPrevious === "fundido") return { kind: "fundido", time: following.fadeTime };
+  return { kind: "corte directo", time: null };
+}
+
+function layerOpacity(local: number, duration: number, fadeIn: number, fadeOut: number): number {
+  let opacity = 1;
+  if (fadeIn > 0 && local < fadeIn) opacity = local / fadeIn;
+  if (fadeOut > 0 && duration - local < fadeOut) {
+    opacity = Math.min(opacity, (duration - local) / fadeOut);
+  }
+  return opacity;
+}
+
+type FrameLayer = {
+  sceneId: string;
+  medium: Medium | null;
+  url: string | null;
+  entry: number;
+  local: number;
+  opacity: number;
+  duration: number;
+  texts: SceneText[];
+  narrationId: string | null;
+  narrationUrl: string | null;
+};
+
+function frameLayers(scenes: Scene[], library: Medium[], moment: number): FrameLayer[] {
+  const starts = sceneStarts(scenes);
+  const length = shortSeconds(scenes);
+  const time = length === 0 ? 0 : Math.min(Math.max(moment, 0), length);
+  const layers: FrameLayer[] = [];
+  scenes.forEach((scene, index) => {
+    const start = starts[index];
+    const end = start + scene.duration;
+    const isLast = index === scenes.length - 1;
+    if (!(time >= start && (time < end || (isLast && time === end)))) return;
+    const local = Math.min(Math.max(time - start, 0), scene.duration);
+    const fadeIn = index === 0 ? 0 : fadeSeconds(scene);
+    const fadeOut = index + 1 < scenes.length ? fadeSeconds(scenes[index + 1]) : 0;
+    const narration = scene.narrationId
+      ? library.find((item) => item.id === scene.narrationId && item.kind === "audio") ?? null
+      : null;
+    const medium = library.find((item) => item.id === scene.mediumId) ?? null;
+    layers.push({
+      sceneId: scene.id,
+      medium,
+      url: medium ? mediumUrl(medium.id) : null,
+      entry: scene.entry ?? 0,
+      local,
+      opacity: layerOpacity(local, scene.duration, fadeIn, fadeOut),
+      duration: scene.duration,
+      texts: scene.texts,
+      narrationId: narration?.id ?? null,
+      narrationUrl: narration ? mediumUrl(narration.id) : null,
+    });
+  });
+  return layers;
 }
 
 const encaje: CSSProperties = {
@@ -506,36 +635,61 @@ const encaje: CSSProperties = {
   objectPosition: "center",
 };
 
-function SceneFrame({
-  scene,
-  medium,
-  visualMedia,
-  audioMedia,
-  onDuration,
-  onReplace,
-  onSetNarration,
-  onAddText,
-  onPatchText,
-  onMoveText,
-  onRemoveText,
+function textStyle(text: SceneText, index: number): CSSProperties {
+  return {
+    position: "absolute",
+    left: `${text.x * 100}%`,
+    top: `${text.y * 100}%`,
+    transform: "translate(-50%, -50%)",
+    color: text.color,
+    textAlign: text.align,
+    fontSize: `${text.size * 100}cqh`,
+    fontFamily: "inherit",
+    lineHeight: 1.1,
+    width: "max-content",
+    maxWidth: "100%",
+    whiteSpace: "pre-wrap",
+    zIndex: index + 1,
+  };
+}
+
+function VisualLayer({ layer }: { layer: FrameLayer }) {
+  const videoRef = useRef<HTMLVideoElement | null>(null);
+  useEffect(() => {
+    const video = videoRef.current;
+    if (!video) return;
+    const nextTime = layer.entry + layer.local;
+    if (!Number.isFinite(nextTime)) return;
+    try {
+      video.currentTime = nextTime;
+    } catch {
+      // A preview can seek only after the file has metadata.
+    }
+  }, [layer.entry, layer.local, layer.url]);
+
+  if (!layer.medium || !layer.url) return null;
+  if (layer.medium.kind === "imagen") {
+    return <img src={layer.url} alt={layer.medium.name} style={encaje} />;
+  }
+  if (layer.medium.kind === "video") {
+    return <video ref={videoRef} src={layer.url} muted autoPlay playsInline style={encaje} />;
+  }
+  return null;
+}
+
+function NarrationAudio({
+  sceneId,
+  narrationId,
+  src,
+  duration,
+  local,
 }: {
-  scene: Scene;
-  medium: Medium | null;
-  visualMedia: Medium[];
-  audioMedia: Medium[];
-  onDuration: (next: number) => void;
-  onReplace: (mediumId: string) => void;
-  onSetNarration: (narrationId: string | null) => void;
-  onAddText: () => void;
-  onPatchText: (textId: string, patch: Partial<Omit<SceneText, "id">>) => void;
-  onMoveText: (textId: string, direction: -1 | 1) => void;
-  onRemoveText: (textId: string) => void;
+  sceneId: string;
+  narrationId: string;
+  src: string;
+  duration: number;
+  local: number;
 }) {
-  const url = medium ? mediumUrl(medium.id) : null;
-  const narration = scene.narrationId
-    ? audioMedia.find((audio) => audio.id === scene.narrationId) ?? null
-    : null;
-  const narrationUrl = narration ? mediumUrl(narration.id) : null;
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const audioStopTimer = useRef<number | null>(null);
 
@@ -548,7 +702,7 @@ function SceneFrame({
 
   function scheduleAudioStop(audio: HTMLAudioElement) {
     clearAudioTimer();
-    const remainingMs = Math.max(0, (scene.duration - audio.currentTime) * 1000);
+    const remainingMs = Math.max(0, (duration - audio.currentTime) * 1000);
     audioStopTimer.current = window.setTimeout(() => {
       audioStopTimer.current = null;
       audio.pause();
@@ -556,7 +710,7 @@ function SceneFrame({
   }
 
   function syncAudioStop(audio: HTMLAudioElement) {
-    if (audio.currentTime >= scene.duration) {
+    if (audio.currentTime >= duration) {
       clearAudioTimer();
       audio.pause();
       return;
@@ -566,11 +720,85 @@ function SceneFrame({
 
   useEffect(() => {
     const audio = audioRef.current;
-    if (audio && !audio.paused && !audio.ended) {
-      syncAudioStop(audio);
-    }
+    if (audio && !audio.paused && !audio.ended) syncAudioStop(audio);
     return () => clearAudioTimer();
-  }, [scene.id, scene.duration, narration?.id]);
+  }, [sceneId, duration, narrationId]);
+
+  useEffect(() => {
+    const audio = audioRef.current;
+    if (!audio || !Number.isFinite(local)) return;
+    try {
+      audio.currentTime = local;
+    } catch {
+      // The preview seeks when the file can report a position.
+    }
+  }, [local]);
+
+  return (
+    <audio
+      ref={audioRef}
+      key={`${sceneId}:${narrationId}`}
+      src={src}
+      autoPlay
+      loop={false}
+      onPlay={(event) => syncAudioStop(event.currentTarget)}
+      onPlaying={(event) => syncAudioStop(event.currentTarget)}
+      onTimeUpdate={(event) => {
+        if (event.currentTarget.currentTime >= duration) {
+          clearAudioTimer();
+          event.currentTarget.pause();
+        }
+      }}
+      onWaiting={clearAudioTimer}
+      onStalled={clearAudioTimer}
+      onPause={clearAudioTimer}
+      onEnded={clearAudioTimer}
+    />
+  );
+}
+
+function SceneFrame({
+  scene,
+  medium,
+  layers,
+  visualMedia,
+  audioMedia,
+  nextCut,
+  moment,
+  shortLength,
+  onDuration,
+  onReplace,
+  onScrub,
+  onSetNextCut,
+  onSetFadeTime,
+  onSetNarration,
+  onAddText,
+  onPatchText,
+  onMoveText,
+  onRemoveText,
+}: {
+  scene: Scene;
+  medium: Medium | null;
+  layers: FrameLayer[];
+  visualMedia: Medium[];
+  audioMedia: Medium[];
+  nextCut: { kind: "corte directo" | "fundido"; time: number | null } | null;
+  moment: number;
+  shortLength: number;
+  onDuration: (next: number) => void;
+  onReplace: (mediumId: string) => void;
+  onScrub: (next: number) => void;
+  onSetNextCut: (kind: "corte directo" | "fundido") => void;
+  onSetFadeTime: (next: number) => void;
+  onSetNarration: (narrationId: string | null) => void;
+  onAddText: () => void;
+  onPatchText: (textId: string, patch: Partial<Omit<SceneText, "id">>) => void;
+  onMoveText: (textId: string, direction: -1 | 1) => void;
+  onRemoveText: (textId: string) => void;
+}) {
+  const narration = scene.narrationId
+    ? audioMedia.find((audio) => audio.id === scene.narrationId) ?? null
+    : null;
 
   return (
     <div className="escena-cuerpo" style={{ display: "flex", flexDirection: "row", alignItems: "flex-start", gap: "16px" }}>
@@ -588,56 +816,31 @@ function SceneFrame({
           minWidth: 0,
         }}
       >
-        {medium && url && medium.kind === "imagen" ? (
-          <img src={url} alt={medium.name} style={encaje} />
-        ) : null}
-        {medium && url && medium.kind === "video" ? (
-          <video src={url} muted autoPlay playsInline style={encaje} />
-        ) : null}
-        {narration && narrationUrl ? (
-          <audio
-            ref={audioRef}
-            key={`${scene.id}:${narration.id}`}
-            src={narrationUrl}
-            autoPlay
-            loop={false}
-            onPlay={(event) => syncAudioStop(event.currentTarget)}
-            onPlaying={(event) => syncAudioStop(event.currentTarget)}
-            onTimeUpdate={(event) => {
-              if (event.currentTarget.currentTime >= scene.duration) {
-                clearAudioTimer();
-                event.currentTarget.pause();
-              }
-            }}
-            onWaiting={clearAudioTimer}
-            onStalled={clearAudioTimer}
-            onPause={clearAudioTimer}
-            onEnded={clearAudioTimer}
-          />
-        ) : null}
-        {scene.texts.map((text, index) => (
-          <span
-            key={text.id}
-            className="cuadro-texto"
-            style={{
-              position: "absolute",
-              left: `${text.x * 100}%`,
-              top: `${text.y * 100}%`,
-              transform: "translate(-50%, -50%)",
-              color: text.color,
-              textAlign: text.align,
-              fontSize: `${text.size * 100}cqh`,
-              fontFamily: "inherit",
-              lineHeight: 1.1,
-              width: "max-content",
-              maxWidth: "100%",
-              whiteSpace: "pre-wrap",
-              zIndex: index + 1,
-            }}
+        {layers.map((layer) => (
+          <div
+            key={layer.sceneId}
+            style={{ position: "absolute", inset: 0, opacity: layer.opacity }}
           >
-            {text.content}
-          </span>
+            <VisualLayer layer={layer} />
+            {layer.texts.map((text, index) => (
+              <span key={text.id} className="cuadro-texto" style={textStyle(text, index)}>
+                {text.content}
+              </span>
+            ))}
+          </div>
         ))}
+        {layers.map((layer) =>
+          layer.narrationId && layer.narrationUrl ? (
+            <NarrationAudio
+              key={`${layer.sceneId}:${layer.narrationId}`}
+              sceneId={layer.sceneId}
+              narrationId={layer.narrationId}
+              src={layer.narrationUrl}
+              duration={layer.duration}
+              local={layer.local}
+            />
+          ) : null,
+        )}
       </section>
       <div className="datos" style={{ flexGrow: 1, flexShrink: 1, flexBasis: 0, minWidth: 0 }}>
         <p>{medium?.name}</p>
@@ -663,6 +866,39 @@ function SceneFrame({
         <p>{scene.duration} s</p>
         {scene.entry !== null ? <p>{scene.entry} s</p> : null}
         {scene.cutWithPrevious ? <p>{scene.cutWithPrevious}</p> : null}
+        {nextCut ? (
+          <label>
+            Corte con la siguiente
+            <select
+              value={nextCut.kind}
+              onChange={(event) =>
+                onSetNextCut(event.currentTarget.value === "fundido" ? "fundido" : "corte directo")
+              }
+            >
+              <option value="corte directo">Corte directo</option>
+              <option value="fundido">Fundido</option>
+            </select>
+          </label>
+        ) : null}
+        {nextCut?.kind === "fundido" && nextCut.time !== null ? (
+          <FractionField
+            label="Tiempo del fundido"
+            value={nextCut.time}
+            positiveOnly
+            onChange={onSetFadeTime}
+          />
+        ) : null}
+        <label>
+          Recorrer
+          <input
+            type="range"
+            min={0}
+            max={shortLength}
+            step="any"
+            value={moment}
+            onChange={(event) => onScrub(Number(event.currentTarget.value))}
+          />
+        </label>
         <label>
           Narración
           <select
@@ -766,6 +1002,7 @@ export function Editor() {
   const [mode, setMode] = useState<Mode>("escenas");
   const [chosenMediumId, setChosenMediumId] = useState<string | null>(null);
   const [selectedSceneId, setSelectedSceneId] = useState<string | null>(null);
+  const [playhead, setPlayhead] = useState(0);
   const [apariencia, setApariencia] = useState(openApariencia);
   const [revision, setRevision] = useState(0);
   const project = user.projects[0];
@@ -776,6 +1013,8 @@ export function Editor() {
   const chosen =
     visualMedia.find((medium) => medium.id === chosenMediumId) ?? visualMedia[0] ?? null;
   const selectedScene = project.scenes.find((scene) => scene.id === selectedSceneId) ?? null;
+  const shortLength = shortSeconds(project.scenes);
+  const moment = Math.min(playhead, shortLength);
   const libraryRef = useRef(user.library);
   libraryRef.current = user.library;
 
@@ -818,7 +1057,9 @@ export function Editor() {
     const birth = await sceneBirth(chosen);
     if (!birth || !libraryRef.current.some((item) => item.id === mediumId)) return;
     const sceneId = crypto.randomUUID();
+    const start = shortSeconds(project.scenes);
     setSelectedSceneId(sceneId);
+    setPlayhead(start);
     setMode("escena");
     setUser((current) => {
       if (!current.library.some((item) => item.id === mediumId)) return current;
@@ -829,6 +1070,7 @@ export function Editor() {
         duration: birth.duration,
         entry: birth.entry,
         cutWithPrevious: currentProject.scenes.length > 0 ? "corte directo" : null,
+        fadeTime: null,
         texts: [],
         narrationId: null,
       };
@@ -933,8 +1175,10 @@ export function Editor() {
         projects: [
           {
             ...currentProject,
-            scenes: currentProject.scenes.map((item) =>
-              item.id === sceneId ? { ...item, duration: next } : item,
+            scenes: shrinkFades(
+              currentProject.scenes.map((item) =>
+                item.id === sceneId ? { ...item, duration: next } : item,
+              ),
             ),
           },
           ...current.projects.slice(1),
@@ -961,16 +1205,68 @@ export function Editor() {
         return current;
       }
       const currentProject = current.projects[0];
+      const scenes = shrinkFades(
+        currentProject.scenes.map((item) => {
+          if (item.id !== sceneId || item.mediumId === mediumId) return item;
+          const duration = fileDuration < item.duration ? fileDuration : item.duration;
+          return { ...item, mediumId, entry: 0, duration };
+        }),
+      );
+      return {
+        ...current,
+        projects: [{ ...currentProject, scenes }, ...current.projects.slice(1)],
+      };
+    });
+  }
+
+  function setNextCut(sceneId: string, kind: "corte directo" | "fundido") {
+    setUser((current) => {
+      const currentProject = current.projects[0];
+      const index = currentProject.scenes.findIndex((item) => item.id === sceneId);
+      if (index < 0 || index >= currentProject.scenes.length - 1) return current;
+      const following = currentProject.scenes[index + 1];
+      if (kind === "fundido" && following.cutWithPrevious === "fundido") return current;
+      const updated: Scene =
+        kind === "corte directo"
+          ? { ...following, cutWithPrevious: "corte directo", fadeTime: null }
+          : {
+              ...following,
+              cutWithPrevious: "fundido",
+              fadeTime: bornFade(currentProject.scenes[index].duration, following.duration),
+            };
       return {
         ...current,
         projects: [
           {
             ...currentProject,
-            scenes: currentProject.scenes.map((item) => {
-              if (item.id !== sceneId || item.mediumId === mediumId) return item;
-              const duration = fileDuration < item.duration ? fileDuration : item.duration;
-              return { ...item, mediumId, entry: 0, duration };
-            }),
+            scenes: currentProject.scenes.map((item, itemIndex) =>
+              itemIndex === index + 1 ? updated : item,
+            ),
+          },
+          ...current.projects.slice(1),
+        ],
+      };
+    });
+  }
+
+  function setFadeTime(sceneId: string, time: number) {
+    if (!(time > 0)) return;
+    setUser((current) => {
+      const currentProject = current.projects[0];
+      const index = currentProject.scenes.findIndex((item) => item.id === sceneId);
+      if (index < 0 || index >= currentProject.scenes.length - 1) return current;
+      const following = currentProject.scenes[index + 1];
+      if (following.cutWithPrevious !== "fundido" || following.fadeTime === null) return current;
+      const limit = Math.min(currentProject.scenes[index].duration, following.duration);
+      if (time > limit) return current;
+      return {
+        ...current,
+        projects: [
+          {
+            ...currentProject,
+            scenes: currentProject.scenes.map((item, itemIndex) =>
+              itemIndex === index + 1 ? { ...item, fadeTime: time } : item,
+            ),
           },
           ...current.projects.slice(1),
         ],
@@ -1085,6 +1381,8 @@ export function Editor() {
                     type="button"
                     onClick={() => {
                       setSelectedSceneId(scene.id);
+                      const index = project.scenes.findIndex((item) => item.id === scene.id);
+                      setPlayhead(scenePreviewTime(project.scenes, index));
                       setMode("escena");
                     }}
                   >
@@ -1104,10 +1402,17 @@ export function Editor() {
             <SceneFrame
               scene={selectedScene}
               medium={user.library.find((item) => item.id === selectedScene.mediumId) ?? null}
+              layers={frameLayers(project.scenes, user.library, moment)}
               visualMedia={visualMedia}
               audioMedia={audioMedia}
+              nextCut={nextCutOf(project.scenes, selectedScene.id)}
+              moment={moment}
+              shortLength={shortLength}
               onDuration={(next) => setDuration(selectedScene.id, next)}
               onReplace={(mediumId) => replaceVisual(selectedScene.id, mediumId)}
+              onScrub={setPlayhead}
+              onSetNextCut={(kind) => setNextCut(selectedScene.id, kind)}
+              onSetFadeTime={(next) => setFadeTime(selectedScene.id, next)}
               onSetNarration={(narrationId) => setNarration(selectedScene.id, narrationId)}
               onAddText={() => addText(selectedScene.id)}
               onPatchText={(textId, patch) => patchText(selectedScene.id, textId, patch)}

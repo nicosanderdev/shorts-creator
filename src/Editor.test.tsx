@@ -1,4 +1,4 @@
-import { act, fireEvent, render, screen, within } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, expect, test, vi } from "vitest";
 import { Editor } from "./Editor";
@@ -2220,4 +2220,301 @@ test("un video sin duración positiva se niega como reemplazo y puede seguir en 
       name: "vacio.mp4 video",
     }),
   ).toBeInTheDocument();
+});
+
+async function chooseCut(
+  user: ReturnType<typeof userEvent.setup>,
+  scene: HTMLElement,
+  kind: "corte directo" | "fundido",
+) {
+  const cut = within(scene).getByRole("combobox", { name: "Corte con la siguiente" });
+  const label = kind === "fundido" ? "Fundido" : "Corte directo";
+  await user.selectOptions(cut, within(cut).getByRole("option", { name: label }));
+}
+
+test("pasar un corte a fundido nace en medio segundo y la barra descuenta ese tiempo", async () => {
+  const user = userEvent.setup();
+  render(<Editor />);
+
+  await addMedium(user, new File(["una"], "foto.png", { type: "image/png" }));
+  await addMedium(user, new File(["otra"], "otra.png", { type: "image/png" }));
+  await addSceneFrom(user, "foto.png");
+  await addSceneFrom(user, "otra.png");
+  expect(screen.getByText("El short dura 6 s")).toBeInTheDocument();
+
+  const scene = await openScene(user, "foto.png");
+  expect(within(scene).queryByRole("spinbutton", { name: "Tiempo del fundido" })).not.toBeInTheDocument();
+  await chooseCut(user, scene, "fundido");
+
+  expect(within(scene).getByRole("spinbutton", { name: "Tiempo del fundido" })).toHaveValue(0.5);
+  expect(within(scene).getByText("3 s")).toBeInTheDocument();
+  expect(screen.getByText("El short dura 5.5 s")).toBeInTheDocument();
+
+  const second = await openScene(user, "otra.png");
+  expect(within(second).getByText("fundido")).toBeInTheDocument();
+  expect(within(second).getByText("3 s")).toBeInTheDocument();
+  expect(within(second).queryByRole("combobox", { name: "Corte con la siguiente" })).not.toBeInTheDocument();
+});
+
+test("si la escena más corta dura menos de medio segundo, el fundido nace con esa duración", async () => {
+  const user = userEvent.setup();
+  render(<Editor />);
+
+  await addMedium(user, new File(["una"], "foto.png", { type: "image/png" }));
+  await addMedium(user, new File(["otra"], "otra.png", { type: "image/png" }));
+  const scene = await addSceneFrom(user, "foto.png");
+  putDuration(scene, "0.4");
+  expect(within(scene).getByText("0.4 s")).toBeInTheDocument();
+  await addSceneFrom(user, "otra.png");
+
+  const first = await openScene(user, "foto.png");
+  await chooseCut(user, first, "fundido");
+  expect(within(first).getByRole("spinbutton", { name: "Tiempo del fundido" })).toHaveValue(0.4);
+  expect(within(first).getByText("0.4 s")).toBeInTheDocument();
+  expect(screen.getByText("El short dura 3 s")).toBeInTheDocument();
+});
+
+test("el tiempo del fundido llega hasta la escena más corta y pedir más o cero se niega", async () => {
+  const user = userEvent.setup();
+  render(<Editor />);
+
+  await addMedium(user, new File(["una"], "foto.png", { type: "image/png" }));
+  await addMedium(user, new File(["otra"], "otra.png", { type: "image/png" }));
+  await addSceneFrom(user, "foto.png");
+  await addSceneFrom(user, "otra.png");
+  const scene = await openScene(user, "foto.png");
+  await chooseCut(user, scene, "fundido");
+  const time = within(scene).getByRole("spinbutton", { name: "Tiempo del fundido" });
+
+  fireEvent.input(time, { target: { value: "3" } });
+  expect(time).toHaveValue(3);
+  expect(within(scene).getByText("3 s")).toBeInTheDocument();
+  expect(screen.getByText("El short dura 3 s")).toBeInTheDocument();
+
+  fireEvent.input(time, { target: { value: "3.1" } });
+  expect(time).toHaveValue(3);
+  expect(screen.getByText("El short dura 3 s")).toBeInTheDocument();
+
+  time.focus();
+  fireEvent.input(time, { target: { value: "0" } });
+  expect(screen.getByText("El short dura 3 s")).toBeInTheDocument();
+  fireEvent.blur(time);
+  expect(time).toHaveValue(3);
+  expect(within(scene).getByRole("combobox", { name: "Corte con la siguiente" })).toHaveValue("fundido");
+});
+
+test("volver a corte directo olvida el tiempo y un fundido nuevo nace otra vez en medio segundo", async () => {
+  const user = userEvent.setup();
+  render(<Editor />);
+
+  await addMedium(user, new File(["una"], "foto.png", { type: "image/png" }));
+  await addMedium(user, new File(["otra"], "otra.png", { type: "image/png" }));
+  await addSceneFrom(user, "foto.png");
+  await addSceneFrom(user, "otra.png");
+  let scene = await openScene(user, "foto.png");
+  await chooseCut(user, scene, "fundido");
+  fireEvent.input(within(scene).getByRole("spinbutton", { name: "Tiempo del fundido" }), {
+    target: { value: "2" },
+  });
+  expect(screen.getByText("El short dura 4 s")).toBeInTheDocument();
+
+  await chooseCut(user, scene, "corte directo");
+  expect(within(scene).queryByRole("spinbutton", { name: "Tiempo del fundido" })).not.toBeInTheDocument();
+  expect(screen.getByText("El short dura 6 s")).toBeInTheDocument();
+  const second = await openScene(user, "otra.png");
+  expect(within(second).getByText("corte directo")).toBeInTheDocument();
+  expect(within(second).queryByText("fundido")).not.toBeInTheDocument();
+
+  scene = await openScene(user, "foto.png");
+  await chooseCut(user, scene, "fundido");
+  expect(within(scene).getByRole("spinbutton", { name: "Tiempo del fundido" })).toHaveValue(0.5);
+  expect(screen.getByText("El short dura 5.5 s")).toBeInTheDocument();
+});
+
+test("una escena puede estar en dos fundidos y la barra descuenta los dos", async () => {
+  const user = userEvent.setup();
+  render(<Editor />);
+
+  await addMedium(user, new File(["una"], "uno.png", { type: "image/png" }));
+  await addMedium(user, new File(["dos"], "dos.png", { type: "image/png" }));
+  await addMedium(user, new File(["tres"], "tres.png", { type: "image/png" }));
+  await addSceneFrom(user, "uno.png");
+  await addSceneFrom(user, "dos.png");
+  await addSceneFrom(user, "tres.png");
+
+  let scene = await openScene(user, "uno.png");
+  await chooseCut(user, scene, "fundido");
+  scene = await openScene(user, "dos.png");
+  expect(within(scene).getByText("fundido")).toBeInTheDocument();
+  await chooseCut(user, scene, "fundido");
+  expect(within(scene).getByRole("combobox", { name: "Corte con la siguiente" })).toHaveValue("fundido");
+  expect(within(scene).getByRole("spinbutton", { name: "Tiempo del fundido" })).toHaveValue(0.5);
+
+  scene = await openScene(user, "tres.png");
+  expect(within(scene).getByText("fundido")).toBeInTheDocument();
+  expect(within(scene).getByText("3 s")).toBeInTheDocument();
+  expect(screen.getByText("El short dura 8 s")).toBeInTheDocument();
+});
+
+test("en el solape se ven los dos medios y los textos, se oyen las dos narraciones y ningún video", async () => {
+  stubPlayback();
+  const user = userEvent.setup();
+  render(<Editor />);
+
+  await addMedium(user, fileWithDuration("sale.mp4", "video/mp4", 10));
+  await addMedium(user, fileWithDuration("entra.mp4", "video/mp4", 10));
+  await addMedium(user, fileWithDuration("voz-sale.mp3", "audio/mpeg", 10));
+  await addMedium(user, fileWithDuration("voz-entra.mp3", "audio/mpeg", 10));
+
+  let scene = await addSceneFrom(user, "sale.mp4");
+  await user.click(within(scene).getByRole("button", { name: "Añadir texto" }));
+  const saleText = within(scene).getByRole("textbox", { name: "Contenido" });
+  await user.clear(saleText);
+  await user.type(saleText, "Sale");
+  let narration = within(scene).getByRole("combobox", { name: "Narración" });
+  await user.selectOptions(narration, within(narration).getByRole("option", { name: "voz-sale.mp3" }));
+
+  scene = await addSceneFrom(user, "entra.mp4");
+  await user.click(within(scene).getByRole("button", { name: "Añadir texto" }));
+  const entraText = within(scene).getByRole("textbox", { name: "Contenido" });
+  await user.clear(entraText);
+  await user.type(entraText, "Entra");
+  narration = within(scene).getByRole("combobox", { name: "Narración" });
+  await user.selectOptions(narration, within(narration).getByRole("option", { name: "voz-entra.mp3" }));
+
+  scene = await openScene(user, "sale.mp4");
+  await chooseCut(user, scene, "fundido");
+  expect(within(scene).getByText("3 s")).toBeInTheDocument();
+  expect(screen.getByText("El short dura 5.5 s")).toBeInTheDocument();
+
+  const frame = within(scene).getByRole("region", { name: "Cuadro" });
+  const slider = within(scene).getByRole("slider", { name: "Recorrer" });
+
+  fireEvent.change(slider, { target: { value: "0" } });
+  expect(within(frame).getByText("Sale")).toBeInTheDocument();
+  expect(within(frame).queryByText("Entra")).not.toBeInTheDocument();
+  expect(frame.querySelectorAll("video")).toHaveLength(1);
+  expect(frame.querySelectorAll("audio")).toHaveLength(1);
+
+  fireEvent.change(slider, { target: { value: "2.75" } });
+  expect(within(frame).getByText("Sale")).toBeInTheDocument();
+  expect(within(frame).getByText("Entra")).toBeInTheDocument();
+  const videos = frame.querySelectorAll("video");
+  expect(videos).toHaveLength(2);
+  for (const video of videos) {
+    expect(video).toHaveProperty("muted", true);
+    expect(video).toHaveProperty("loop", false);
+  }
+  await waitFor(() => {
+    expect(videos[0].currentTime).toBeCloseTo(2.75, 2);
+    expect(videos[1].currentTime).toBeCloseTo(0.25, 2);
+  });
+  const audios = frame.querySelectorAll("audio");
+  expect(audios).toHaveLength(2);
+  for (const audio of audios) expect(audio).toHaveProperty("muted", false);
+
+  fireEvent.change(slider, { target: { value: "4" } });
+  expect(within(frame).queryByText("Sale")).not.toBeInTheDocument();
+  expect(within(frame).getByText("Entra")).toBeInTheDocument();
+  expect(frame.querySelectorAll("video")).toHaveLength(1);
+  expect(frame.querySelectorAll("audio")).toHaveLength(1);
+
+  const second = await openScene(user, "entra.mp4");
+  expect(within(second).getByText("3 s")).toBeInTheDocument();
+  expect(within(second).getByText("fundido")).toBeInTheDocument();
+});
+
+test("acortar una escena baja el fundido vecino y alargar después no lo restaura", async () => {
+  const user = userEvent.setup();
+  render(<Editor />);
+
+  await addMedium(user, new File(["una"], "foto.png", { type: "image/png" }));
+  await addMedium(user, new File(["otra"], "otra.png", { type: "image/png" }));
+  await addSceneFrom(user, "foto.png");
+  await addSceneFrom(user, "otra.png");
+  const scene = await openScene(user, "foto.png");
+  await chooseCut(user, scene, "fundido");
+  const time = within(scene).getByRole("spinbutton", { name: "Tiempo del fundido" });
+  fireEvent.input(time, { target: { value: "2" } });
+  expect(screen.getByText("El short dura 4 s")).toBeInTheDocument();
+
+  putDuration(scene, "1");
+  expect(within(scene).getByText("1 s")).toBeInTheDocument();
+  expect(time).toHaveValue(1);
+  expect(screen.getByText("El short dura 3 s")).toBeInTheDocument();
+
+  putDuration(scene, "3");
+  expect(within(scene).getByText("3 s")).toBeInTheDocument();
+  expect(time).toHaveValue(1);
+  expect(screen.getByText("El short dura 5 s")).toBeInTheDocument();
+});
+
+test("reemplazar por un video más corto baja el fundido y alargar después no lo restaura", async () => {
+  stubPlayback();
+  const user = userEvent.setup();
+  render(<Editor />);
+
+  await addMedium(user, new File(["una"], "foto.png", { type: "image/png" }));
+  await addMedium(user, new File(["otra"], "otra.png", { type: "image/png" }));
+  await addMedium(user, fileWithDuration("corto.mp4", "video/mp4", 1));
+  await addSceneFrom(user, "foto.png");
+  await addSceneFrom(user, "otra.png");
+  let scene = await openScene(user, "foto.png");
+  await user.click(within(scene).getByRole("button", { name: "Añadir texto" }));
+  const content = within(scene).getByRole("textbox", { name: "Contenido" });
+  await user.clear(content);
+  await user.type(content, "Sigue");
+  await chooseCut(user, scene, "fundido");
+  fireEvent.input(within(scene).getByRole("spinbutton", { name: "Tiempo del fundido" }), {
+    target: { value: "2" },
+  });
+
+  const replace = within(scene).getByRole("combobox", { name: "Reemplazar" });
+  await user.selectOptions(replace, within(replace).getByRole("option", { name: "corto.mp4" }));
+  expect(await within(scene).findByText("1 s")).toBeInTheDocument();
+  expect(within(scene).getByText("0 s")).toBeInTheDocument();
+  expect(within(scene).getByRole("spinbutton", { name: "Tiempo del fundido" })).toHaveValue(1);
+  expect(within(scene).getByRole("textbox", { name: "Contenido" })).toHaveValue("Sigue");
+  expect(screen.getByText("El short dura 3 s")).toBeInTheDocument();
+
+  const back = within(scene).getByRole("combobox", { name: "Reemplazar" });
+  await user.selectOptions(back, within(back).getByRole("option", { name: "foto.png" }));
+  expect(await within(scene).findByText("foto.png", { selector: "p" })).toBeInTheDocument();
+  expect(within(scene).getByText("1 s")).toBeInTheDocument();
+  expect(within(scene).queryByText("0 s")).not.toBeInTheDocument();
+
+  putDuration(scene, "3");
+  expect(within(scene).getByText("3 s")).toBeInTheDocument();
+  expect(within(scene).getByRole("spinbutton", { name: "Tiempo del fundido" })).toHaveValue(1);
+  expect(screen.getByText("El short dura 5 s")).toBeInTheDocument();
+  scene = await openScene(user, "otra.png");
+  expect(within(scene).getByText("fundido")).toBeInTheDocument();
+  expect(within(scene).getByText("3 s")).toBeInTheDocument();
+});
+
+test("añadir una escena no crea un fundido", async () => {
+  const user = userEvent.setup();
+  render(<Editor />);
+
+  await addMedium(user, new File(["una"], "uno.png", { type: "image/png" }));
+  await addMedium(user, new File(["dos"], "dos.png", { type: "image/png" }));
+  await addMedium(user, new File(["tres"], "tres.png", { type: "image/png" }));
+  await addSceneFrom(user, "uno.png");
+  await addSceneFrom(user, "dos.png");
+  const scene = await openScene(user, "uno.png");
+  await chooseCut(user, scene, "fundido");
+  expect(screen.getByText("El short dura 5.5 s")).toBeInTheDocument();
+
+  const added = await addSceneFrom(user, "tres.png");
+  expect(within(added).getByText("corte directo")).toBeInTheDocument();
+  expect(within(added).queryByText("fundido")).not.toBeInTheDocument();
+  expect(screen.getByText("El short dura 8.5 s")).toBeInTheDocument();
+
+  const first = await openScene(user, "uno.png");
+  expect(within(first).getByRole("spinbutton", { name: "Tiempo del fundido" })).toHaveValue(0.5);
+  const middle = await openScene(user, "dos.png");
+  expect(within(middle).getByText("fundido")).toBeInTheDocument();
+  expect(within(middle).getByRole("combobox", { name: "Corte con la siguiente" })).toHaveValue(
+    "corte directo",
+  );
 });
