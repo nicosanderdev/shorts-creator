@@ -509,7 +509,10 @@ const encaje: CSSProperties = {
 function SceneFrame({
   scene,
   medium,
+  visualMedia,
   audioMedia,
+  onDuration,
+  onReplace,
   onSetNarration,
   onAddText,
   onPatchText,
@@ -518,7 +521,10 @@ function SceneFrame({
 }: {
   scene: Scene;
   medium: Medium | null;
+  visualMedia: Medium[];
   audioMedia: Medium[];
+  onDuration: (next: number) => void;
+  onReplace: (mediumId: string) => void;
   onSetNarration: (narrationId: string | null) => void;
   onAddText: () => void;
   onPatchText: (textId: string, patch: Partial<Omit<SceneText, "id">>) => void;
@@ -635,6 +641,25 @@ function SceneFrame({
       </section>
       <div className="datos" style={{ flexGrow: 1, flexShrink: 1, flexBasis: 0, minWidth: 0 }}>
         <p>{medium?.name}</p>
+        <label>
+          Reemplazar
+          <select
+            value={scene.mediumId}
+            onChange={(event) => {
+              const next = event.currentTarget.value;
+              if (next === scene.mediumId) return;
+              event.currentTarget.value = scene.mediumId;
+              onReplace(next);
+            }}
+          >
+            {visualMedia.map((item) => (
+              <option key={item.id} value={item.id}>
+                {item.name}
+              </option>
+            ))}
+          </select>
+        </label>
+        <FractionField label="Duración" value={scene.duration} positiveOnly onChange={onDuration} />
         <p>{scene.duration} s</p>
         {scene.entry !== null ? <p>{scene.entry} s</p> : null}
         {scene.cutWithPrevious ? <p>{scene.cutWithPrevious}</p> : null}
@@ -883,6 +908,76 @@ export function Editor() {
     }));
   }
 
+  async function setDuration(sceneId: string, next: number) {
+    if (!(next > 0)) return;
+    const scene = project.scenes.find((item) => item.id === sceneId);
+    if (!scene) return;
+    const medium = user.library.find((item) => item.id === scene.mediumId);
+    if (!medium || (medium.kind !== "imagen" && medium.kind !== "video")) return;
+    let fileDuration = Number.POSITIVE_INFINITY;
+    if (medium.kind === "video") {
+      const url = mediumUrl(medium.id);
+      if (!url) return;
+      fileDuration = await readVideoDuration(url);
+      if (!Number.isFinite(fileDuration) || fileDuration <= 0) return;
+    }
+    const mediumId = medium.id;
+    const kind = medium.kind;
+    setUser((current) => {
+      const currentProject = current.projects[0];
+      const latest = currentProject.scenes.find((item) => item.id === sceneId);
+      if (!latest || latest.mediumId !== mediumId) return current;
+      if (kind === "video" && (latest.entry ?? 0) + next > fileDuration) return current;
+      return {
+        ...current,
+        projects: [
+          {
+            ...currentProject,
+            scenes: currentProject.scenes.map((item) =>
+              item.id === sceneId ? { ...item, duration: next } : item,
+            ),
+          },
+          ...current.projects.slice(1),
+        ],
+      };
+    });
+  }
+
+  async function replaceVisual(sceneId: string, mediumId: string) {
+    const scene = project.scenes.find((item) => item.id === sceneId);
+    if (!scene || scene.mediumId === mediumId) return;
+    const medium = user.library.find((item) => item.id === mediumId);
+    if (!medium || (medium.kind !== "imagen" && medium.kind !== "video")) return;
+    if (medium.kind === "imagen") {
+      updateScene(sceneId, (current) => ({ ...current, mediumId, entry: null }));
+      return;
+    }
+    const url = mediumUrl(medium.id);
+    if (!url) return;
+    const fileDuration = await readVideoDuration(url);
+    if (!Number.isFinite(fileDuration) || fileDuration <= 0) return;
+    setUser((current) => {
+      if (!current.library.some((item) => item.id === mediumId && item.kind === "video")) {
+        return current;
+      }
+      const currentProject = current.projects[0];
+      return {
+        ...current,
+        projects: [
+          {
+            ...currentProject,
+            scenes: currentProject.scenes.map((item) => {
+              if (item.id !== sceneId || item.mediumId === mediumId) return item;
+              const duration = fileDuration < item.duration ? fileDuration : item.duration;
+              return { ...item, mediumId, entry: 0, duration };
+            }),
+          },
+          ...current.projects.slice(1),
+        ],
+      };
+    });
+  }
+
   function setValor<K extends keyof Apariencia>(key: K, value: Apariencia[K]) {
     setApariencia((current) => {
       const next = { ...current, [key]: value };
@@ -1009,7 +1104,10 @@ export function Editor() {
             <SceneFrame
               scene={selectedScene}
               medium={user.library.find((item) => item.id === selectedScene.mediumId) ?? null}
+              visualMedia={visualMedia}
               audioMedia={audioMedia}
+              onDuration={(next) => setDuration(selectedScene.id, next)}
+              onReplace={(mediumId) => replaceVisual(selectedScene.id, mediumId)}
               onSetNarration={(narrationId) => setNarration(selectedScene.id, narrationId)}
               onAddText={() => addText(selectedScene.id)}
               onPatchText={(textId, patch) => patchText(selectedScene.id, textId, patch)}

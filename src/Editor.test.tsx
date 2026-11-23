@@ -347,7 +347,7 @@ test("una imagen nace en tres segundos, sin recorte, y llena el cuadro", async (
   await user.click(screen.getByRole("button", { name: "Añadir" }));
 
   const scene = await screen.findByRole("region", { name: "Escena" });
-  expect(within(scene).getByText("foto.png")).toBeInTheDocument();
+  expect(within(scene).getByText("foto.png", { selector: "p" })).toBeInTheDocument();
   expect(within(scene).getByText("3 s")).toBeInTheDocument();
   expect(within(scene).queryByText("0 s")).not.toBeInTheDocument();
   expect(within(scene).queryByText("corte directo")).not.toBeInTheDocument();
@@ -357,7 +357,8 @@ test("una imagen nace en tres segundos, sin recorte, y llena el cuadro", async (
     "Añadir texto",
   ]);
   expect(within(scene).getByRole("combobox", { name: "Narración" })).toHaveValue("");
-  expect(within(scene).getAllByRole("combobox")).toHaveLength(1);
+  expect(within(scene).getByRole("combobox", { name: "Reemplazar" })).toBeInTheDocument();
+  expect(within(scene).getAllByRole("combobox")).toHaveLength(2);
   expect(within(scene).queryByRole("checkbox")).not.toBeInTheDocument();
   expect(screen.queryByRole("region", { name: "Escenas" })).not.toBeInTheDocument();
   expect(screen.queryByRole("region", { name: "Biblioteca" })).not.toBeInTheDocument();
@@ -438,7 +439,7 @@ test("un video de diez segundos nace con la entrada al inicio y dura tres", asyn
   await user.click(screen.getByRole("button", { name: "Añadir" }));
 
   const scene = await screen.findByRole("region", { name: "Escena" });
-  expect(within(scene).getByText("clip.mp4")).toBeInTheDocument();
+  expect(within(scene).getByText("clip.mp4", { selector: "p" })).toBeInTheDocument();
   expect(within(scene).getByText("0 s")).toBeInTheDocument();
   expect(within(scene).getByText("3 s")).toBeInTheDocument();
   expect(screen.getByText("El short dura 3 s")).toBeInTheDocument();
@@ -480,7 +481,7 @@ test("un video más corto que tres segundos nace con el largo del archivo", asyn
   await user.click(screen.getByRole("button", { name: "Añadir" }));
 
   const scene = await screen.findByRole("region", { name: "Escena" });
-  expect(within(scene).getByText("corto.mp4")).toBeInTheDocument();
+  expect(within(scene).getByText("corto.mp4", { selector: "p" })).toBeInTheDocument();
   expect(within(scene).getByText("0 s")).toBeInTheDocument();
   expect(within(scene).getByText("2 s")).toBeInTheDocument();
   expect(screen.getByText("El short dura 2 s")).toBeInTheDocument();
@@ -520,7 +521,7 @@ test("un video sin duración positiva no se añade y el proyecto queda como esta
   await user.click(screen.getByRole("button", { name: "Añadir" }));
 
   let scene = await screen.findByRole("region", { name: "Escena" });
-  expect(within(scene).getByText("foto.png")).toBeInTheDocument();
+  expect(within(scene).getByText("foto.png", { selector: "p" })).toBeInTheDocument();
   expect(screen.getByText("El short dura 3 s")).toBeInTheDocument();
 
   await user.click(screen.getByRole("button", { name: "Escenas" }));
@@ -539,8 +540,8 @@ test("un video sin duración positiva no se añade y el proyecto queda como esta
 
   await user.click(screen.getByRole("button", { name: "Escena" }));
   scene = screen.getByRole("region", { name: "Escena" });
-  expect(within(scene).getByText("foto.png")).toBeInTheDocument();
-  expect(screen.queryByText("nada.webm")).not.toBeInTheDocument();
+  expect(within(scene).getByText("foto.png", { selector: "p" })).toBeInTheDocument();
+  expect(screen.queryByText("nada.webm", { selector: "p" })).not.toBeInTheDocument();
 });
 
 test("un GIF se ve en el cuadro como video, en silencio y sin repetirse", async () => {
@@ -597,7 +598,7 @@ test("dos escenas quedan en orden, la segunda nace en corte directo y la barra s
   await user.click(screen.getByRole("button", { name: "Añadir" }));
 
   let scene = await screen.findByRole("region", { name: "Escena" });
-  expect(within(scene).getByText("foto.png")).toBeInTheDocument();
+  expect(within(scene).getByText("foto.png", { selector: "p" })).toBeInTheDocument();
   expect(within(scene).queryByText("corte directo")).not.toBeInTheDocument();
   expect(screen.getByText("El short dura 3 s")).toBeInTheDocument();
   expect(screen.queryByRole("region", { name: "Escenas" })).not.toBeInTheDocument();
@@ -609,7 +610,7 @@ test("dos escenas quedan en orden, la segunda nace en corte directo y la barra s
   await user.click(screen.getByRole("button", { name: "Añadir" }));
 
   scene = await screen.findByRole("region", { name: "Escena" });
-  expect(within(scene).getByText("otra.png")).toBeInTheDocument();
+  expect(within(scene).getByText("otra.png", { selector: "p" })).toBeInTheDocument();
   expect(within(scene).getByText("corte directo")).toBeInTheDocument();
   expect(within(scene).getByText("3 s")).toBeInTheDocument();
   expect(screen.getByText("El short dura 6 s")).toBeInTheDocument();
@@ -630,7 +631,7 @@ test("dos escenas quedan en orden, la segunda nace en corte directo y la barra s
     within(screen.getByRole("list", { name: "Escenas" })).getByRole("button", { name: "foto.png" }),
   );
   scene = await screen.findByRole("region", { name: "Escena" });
-  expect(within(scene).getByText("foto.png")).toBeInTheDocument();
+  expect(within(scene).getByText("foto.png", { selector: "p" })).toBeInTheDocument();
   expect(within(scene).queryByText("corte directo")).not.toBeInTheDocument();
   expect(within(scene).getByRole("region", { name: "Cuadro" })).toBeInTheDocument();
   expect(screen.getByText("El short dura 6 s")).toBeInTheDocument();
@@ -665,7 +666,7 @@ test("al volver, la escena añadida sigue en el proyecto", async () => {
     within(screen.getByRole("list", { name: "Escenas" })).getByRole("button", { name: "foto.png" }),
   );
   const scene = screen.getByRole("region", { name: "Escena" });
-  expect(within(scene).getByText("foto.png")).toBeInTheDocument();
+  expect(within(scene).getByText("foto.png", { selector: "p" })).toBeInTheDocument();
   expect(within(scene).getByText("3 s")).toBeInTheDocument();
   expect(within(scene).queryByText("0 s")).not.toBeInTheDocument();
   expect(within(scene).queryByText("corte directo")).not.toBeInTheDocument();
@@ -1262,7 +1263,7 @@ test("quitar un texto lo saca de la lista y del cuadro sin tocar el medio ni los
   expect(within(items[0]).getByLabelText("Contenido")).toHaveValue("Segundo");
   expect(within(cuadro).queryByText("Primero")).not.toBeInTheDocument();
   expect(within(cuadro).getByText("Segundo")).toBeInTheDocument();
-  expect(within(scene).getByText("foto.png")).toBeInTheDocument();
+  expect(within(scene).getByText("foto.png", { selector: "p" })).toBeInTheDocument();
   expect(within(scene).getByText("3 s")).toBeInTheDocument();
   expect(screen.getByText("El short dura 3 s")).toBeInTheDocument();
 
@@ -1356,7 +1357,7 @@ test("una escena guardada antes sin textos se abre sin perder el proyecto", asyn
     within(screen.getByRole("list", { name: "Escenas" })).getByRole("button", { name: "foto.png" }),
   );
   const scene = await screen.findByRole("region", { name: "Escena" });
-  expect(within(scene).getByText("foto.png")).toBeInTheDocument();
+  expect(within(scene).getByText("foto.png", { selector: "p" })).toBeInTheDocument();
   expect(within(scene).getByRole("list", { name: "Textos" })).toBeEmptyDOMElement();
 });
 
@@ -1857,4 +1858,366 @@ test("quitar un medio consulta todos los proyectos del usuario y deja la bibliot
     mediumId: "m1",
     narrationId: "m2",
   });
+});
+
+async function addMedium(user: ReturnType<typeof userEvent.setup>, file: File) {
+  if (!screen.queryByRole("region", { name: "Biblioteca" })) {
+    await user.click(screen.getByRole("button", { name: "Biblioteca" }));
+  }
+  await user.upload(screen.getByLabelText("Incorporar"), file);
+}
+
+async function addSceneFrom(user: ReturnType<typeof userEvent.setup>, name: string) {
+  if (!screen.queryByRole("region", { name: "Escenas" })) {
+    await user.click(screen.getByRole("button", { name: "Escenas" }));
+  }
+  const choice = screen.getByRole("combobox", { name: "Medio visual" });
+  await user.selectOptions(choice, within(choice).getByRole("option", { name }));
+  await user.click(screen.getByRole("button", { name: "Añadir" }));
+  return screen.findByRole("region", { name: "Escena" });
+}
+
+async function openScene(
+  user: ReturnType<typeof userEvent.setup>,
+  name: string,
+  index = 0,
+) {
+  if (!screen.queryByRole("region", { name: "Escenas" })) {
+    await user.click(screen.getByRole("button", { name: "Escenas" }));
+  }
+  const buttons = within(screen.getByRole("list", { name: "Escenas" })).getAllByRole("button", {
+    name,
+  });
+  await user.click(buttons[index]);
+  return screen.findByRole("region", { name: "Escena" });
+}
+
+function putDuration(scene: HTMLElement, value: string) {
+  fireEvent.input(within(scene).getByRole("spinbutton", { name: "Duración" }), {
+    target: { value },
+  });
+}
+
+test("cambiar la duración de una imagen cambia cuánto se muestra y una imagen no tiene tope", async () => {
+  const user = userEvent.setup();
+  render(<Editor />);
+
+  await addMedium(user, new File(["imagen"], "foto.png", { type: "image/png" }));
+  const scene = await addSceneFrom(user, "foto.png");
+  expect(within(scene).getByText("3 s")).toBeInTheDocument();
+  expect(screen.getByText("El short dura 3 s")).toBeInTheDocument();
+
+  putDuration(scene, "8");
+  expect(within(scene).getByText("8 s")).toBeInTheDocument();
+  expect(within(scene).queryByText("3 s")).not.toBeInTheDocument();
+  expect(screen.getByText("El short dura 8 s")).toBeInTheDocument();
+  expect(within(scene).getByRole("spinbutton", { name: "Duración" })).toHaveValue(8);
+
+  putDuration(scene, "100");
+  expect(within(scene).getByText("100 s")).toBeInTheDocument();
+  expect(screen.getByText("El short dura 100 s")).toBeInTheDocument();
+  expect(within(scene).queryByText("0 s")).not.toBeInTheDocument();
+});
+
+test("pedir duración cero se niega y la duración anterior sigue", async () => {
+  const user = userEvent.setup();
+  render(<Editor />);
+
+  await addMedium(user, new File(["imagen"], "foto.png", { type: "image/png" }));
+  const scene = await addSceneFrom(user, "foto.png");
+  const duration = within(scene).getByRole("spinbutton", { name: "Duración" });
+
+  duration.focus();
+  fireEvent.input(duration, { target: { value: "0" } });
+  expect(within(scene).getByText("3 s")).toBeInTheDocument();
+  expect(screen.getByText("El short dura 3 s")).toBeInTheDocument();
+
+  fireEvent.blur(duration);
+  expect(duration).toHaveValue(3);
+  expect(within(scene).getByText("3 s")).toBeInTheDocument();
+  expect(screen.getByText("El short dura 3 s")).toBeInTheDocument();
+});
+
+test("en un video, la duración mueve la salida, la entrada se queda y no se sale del archivo", async () => {
+  stubPlayback();
+  const user = userEvent.setup();
+  render(<Editor />);
+
+  await addMedium(user, fileWithDuration("clip.mp4", "video/mp4", 10));
+  const scene = await addSceneFrom(user, "clip.mp4");
+  expect(within(scene).getByText("0 s")).toBeInTheDocument();
+  expect(within(scene).getByText("3 s")).toBeInTheDocument();
+  expect(within(scene).queryByRole("spinbutton", { name: "Entrada" })).not.toBeInTheDocument();
+  expect(within(scene).getAllByRole("spinbutton")).toHaveLength(1);
+
+  putDuration(scene, "5");
+  expect(await within(scene).findByText("5 s")).toBeInTheDocument();
+  expect(within(scene).getByText("0 s")).toBeInTheDocument();
+  expect(screen.getByText("El short dura 5 s")).toBeInTheDocument();
+  const video = within(scene).getByRole("region", { name: "Cuadro" }).querySelector("video");
+  expect(video).toHaveProperty("muted", true);
+
+  putDuration(scene, "11");
+  await settle();
+  expect(within(scene).getByText("5 s")).toBeInTheDocument();
+  expect(within(scene).getByText("0 s")).toBeInTheDocument();
+  expect(within(scene).queryByText("10 s")).not.toBeInTheDocument();
+  expect(within(scene).queryByText("11 s")).not.toBeInTheDocument();
+  expect(screen.getByText("El short dura 5 s")).toBeInTheDocument();
+
+  putDuration(scene, "10");
+  expect(await within(scene).findByText("10 s")).toBeInTheDocument();
+  expect(within(scene).getByText("0 s")).toBeInTheDocument();
+  expect(screen.getByText("El short dura 10 s")).toBeInTheDocument();
+});
+
+test("reemplazar cambia el medio de esa escena, la deja en su sitio y el corte sigue", async () => {
+  stubPlayback();
+  const user = userEvent.setup();
+  render(<Editor />);
+
+  await addMedium(user, new File(["una"], "foto.png", { type: "image/png" }));
+  await addMedium(user, new File(["otra"], "otra.png", { type: "image/png" }));
+  await addMedium(user, fileWithDuration("clip.mp4", "video/mp4", 10));
+  await addSceneFrom(user, "foto.png");
+  await addSceneFrom(user, "otra.png");
+
+  const scene = await openScene(user, "foto.png");
+  const replace = within(scene).getByRole("combobox", { name: "Reemplazar" });
+  expect(within(replace).queryByRole("option", { name: "nota.mp3" })).not.toBeInTheDocument();
+  await user.selectOptions(replace, within(replace).getByRole("option", { name: "clip.mp4" }));
+
+  expect(await within(scene).findByText("clip.mp4", { selector: "p" })).toBeInTheDocument();
+  expect(within(scene).queryByText("foto.png", { selector: "p" })).not.toBeInTheDocument();
+  expect(within(scene).getByText("3 s")).toBeInTheDocument();
+  expect(within(scene).getByText("0 s")).toBeInTheDocument();
+
+  await user.click(screen.getByRole("button", { name: "Escenas" }));
+  expect(
+    within(screen.getByRole("list", { name: "Escenas" }))
+      .getAllByRole("listitem")
+      .map((item) => item.textContent),
+  ).toEqual(["clip.mp4", "otra.png"]);
+
+  const second = await openScene(user, "otra.png");
+  expect(within(second).getByText("otra.png", { selector: "p" })).toBeInTheDocument();
+  expect(within(second).getByText("corte directo")).toBeInTheDocument();
+  expect(within(second).getByText("3 s")).toBeInTheDocument();
+
+  await user.click(screen.getByRole("button", { name: "Biblioteca" }));
+  const library = screen.getByRole("list", { name: "Medios" });
+  expect(within(library).getByRole("listitem", { name: "foto.png imagen" })).toBeInTheDocument();
+  expect(within(library).getByRole("listitem", { name: "clip.mp4 video" })).toBeInTheDocument();
+});
+
+test("las otras escenas que usan el medio siguen igual y un audio no entra en el reemplazo", async () => {
+  stubPlayback();
+  const user = userEvent.setup();
+  render(<Editor />);
+
+  await addMedium(user, fileWithDuration("clip.mp4", "video/mp4", 10));
+  await addMedium(user, new File(["otra"], "otra.png", { type: "image/png" }));
+  await addMedium(user, fileWithDuration("nota.mp3", "audio/mpeg", 4));
+  await addSceneFrom(user, "clip.mp4");
+  await addSceneFrom(user, "clip.mp4");
+
+  const scene = await openScene(user, "clip.mp4", 0);
+  const replace = within(scene).getByRole("combobox", { name: "Reemplazar" });
+  expect(within(replace).queryByRole("option", { name: "nota.mp3" })).not.toBeInTheDocument();
+  expect(within(replace).getAllByRole("option").map((option) => option.textContent)).toEqual([
+    "otra.png",
+    "clip.mp4",
+  ]);
+  await user.selectOptions(replace, within(replace).getByRole("option", { name: "otra.png" }));
+
+  expect(await within(scene).findByText("otra.png", { selector: "p" })).toBeInTheDocument();
+  expect(within(scene).queryByText("0 s")).not.toBeInTheDocument();
+
+  const other = await openScene(user, "clip.mp4");
+  expect(within(other).getByText("clip.mp4", { selector: "p" })).toBeInTheDocument();
+  expect(within(other).getByText("0 s")).toBeInTheDocument();
+  expect(within(other).getByText("3 s")).toBeInTheDocument();
+  expect(within(other).getByText("corte directo")).toBeInTheDocument();
+});
+
+test("elegir el mismo medio deja la escena como está y la entrada del video sigue donde está", async () => {
+  stubPlayback();
+  const user = userEvent.setup();
+  const first = render(<Editor />);
+
+  await addMedium(user, fileWithDuration("clip.mp4", "video/mp4", 10));
+  await addSceneFrom(user, "clip.mp4");
+
+  const stored = JSON.parse(localStorage.getItem("shorts-editor") ?? "{}");
+  stored.projects[0].scenes[0].entry = 2;
+  stored.projects[0].scenes[0].duration = 4;
+  localStorage.setItem("shorts-editor", JSON.stringify(stored));
+  first.unmount();
+  render(<Editor />);
+
+  const scene = await openScene(user, "clip.mp4");
+  expect(within(scene).getByText("2 s")).toBeInTheDocument();
+  expect(within(scene).getByText("4 s")).toBeInTheDocument();
+
+  const replace = within(scene).getByRole("combobox", { name: "Reemplazar" });
+  fireEvent.change(replace, { target: { value: (replace as HTMLSelectElement).value } });
+  await settle();
+  expect(within(scene).getByText("2 s")).toBeInTheDocument();
+  expect(within(scene).getByText("4 s")).toBeInTheDocument();
+  expect(within(scene).queryByText("0 s")).not.toBeInTheDocument();
+
+  putDuration(scene, "5");
+  expect(await within(scene).findByText("5 s")).toBeInTheDocument();
+  expect(within(scene).getByText("2 s")).toBeInTheDocument();
+
+  putDuration(scene, "9");
+  await settle();
+  expect(within(scene).getByText("5 s")).toBeInTheDocument();
+  expect(within(scene).getByText("2 s")).toBeInTheDocument();
+  expect(within(scene).queryByText("8 s")).not.toBeInTheDocument();
+
+  putDuration(scene, "8");
+  expect(await within(scene).findByText("8 s")).toBeInTheDocument();
+  expect(within(scene).getByText("2 s")).toBeInTheDocument();
+  expect(screen.getByText("El short dura 8 s")).toBeInTheDocument();
+});
+
+test("al reemplazar se quedan los textos y la narración, y terminan con la escena", async () => {
+  stubPlayback();
+  const user = userEvent.setup();
+  render(<Editor />);
+
+  await addMedium(user, new File(["imagen"], "foto.png", { type: "image/png" }));
+  await addMedium(user, fileWithDuration("voz.mp3", "audio/mpeg", 10));
+  await addMedium(user, fileWithDuration("corto.mp4", "video/mp4", 2));
+  const scene = await addSceneFrom(user, "foto.png");
+  putDuration(scene, "4");
+  expect(within(scene).getByText("4 s")).toBeInTheDocument();
+
+  await user.click(within(scene).getByRole("button", { name: "Añadir texto" }));
+  await user.click(within(scene).getByRole("button", { name: "Añadir texto" }));
+  const contents = within(scene).getAllByRole("textbox", { name: "Contenido" });
+  await user.clear(contents[0]);
+  await user.type(contents[0], "Arriba");
+  fireEvent.input(within(scene).getAllByRole("spinbutton", { name: "Horizontal" })[0], {
+    target: { value: "0.2" },
+  });
+  fireEvent.input(within(scene).getAllByRole("spinbutton", { name: "Vertical" })[0], {
+    target: { value: "0.3" },
+  });
+  fireEvent.input(within(scene).getAllByRole("spinbutton", { name: "Tamaño" })[0], {
+    target: { value: "0.15" },
+  });
+  fireEvent.input(within(scene).getAllByLabelText("Color")[0], { target: { value: "#ff0000" } });
+  await user.selectOptions(within(scene).getAllByRole("combobox", { name: "Alineación" })[0], "right");
+  await user.clear(contents[1]);
+  await user.type(contents[1], "Abajo");
+
+  const narration = within(scene).getByRole("combobox", { name: "Narración" });
+  await user.selectOptions(narration, within(narration).getByRole("option", { name: "voz.mp3" }));
+  expect(scene.querySelector("audio")).not.toBeNull();
+
+  const replace = within(scene).getByRole("combobox", { name: "Reemplazar" });
+  await user.selectOptions(replace, within(replace).getByRole("option", { name: "corto.mp4" }));
+
+  expect(await within(scene).findByText("2 s")).toBeInTheDocument();
+  expect(within(scene).queryByText("4 s")).not.toBeInTheDocument();
+  expect(within(scene).getByText("0 s")).toBeInTheDocument();
+  expect(within(scene).getByText("corto.mp4", { selector: "p" })).toBeInTheDocument();
+  expect(screen.getByText("El short dura 2 s")).toBeInTheDocument();
+
+  const frame = within(scene).getByRole("region", { name: "Cuadro" });
+  expect(frame.querySelector("video")).toHaveProperty("muted", true);
+  expect(frame.querySelector("video")).toHaveProperty("loop", false);
+  expect(within(frame).getByText("Arriba")).toBeInTheDocument();
+  expect(within(frame).getByText("Abajo")).toBeInTheDocument();
+  const stacked = within(frame).getAllByText(/Arriba|Abajo/);
+  expect(stacked.map((node) => node.textContent)).toEqual(["Arriba", "Abajo"]);
+
+  expect(within(scene).getAllByRole("textbox", { name: "Contenido" })[0]).toHaveValue("Arriba");
+  expect(within(scene).getAllByRole("textbox", { name: "Contenido" })[1]).toHaveValue("Abajo");
+  expect(within(scene).getAllByRole("spinbutton", { name: "Horizontal" })[0]).toHaveValue(0.2);
+  expect(within(scene).getAllByRole("spinbutton", { name: "Vertical" })[0]).toHaveValue(0.3);
+  expect(within(scene).getAllByRole("spinbutton", { name: "Tamaño" })[0]).toHaveValue(0.15);
+  expect(within(scene).getAllByLabelText("Color")[0]).toHaveValue("#ff0000");
+  expect(within(scene).getAllByRole("combobox", { name: "Alineación" })[0]).toHaveValue("right");
+  expect(within(scene).getByRole("combobox", { name: "Narración" })).not.toHaveValue("");
+
+  const audio = scene.querySelector("audio")!;
+  const pause = vi.fn();
+  Object.defineProperty(audio, "pause", { configurable: true, value: pause });
+  let time = 1.9;
+  Object.defineProperty(audio, "currentTime", {
+    configurable: true,
+    get: () => time,
+    set: (value: number) => {
+      time = value;
+    },
+  });
+  fireEvent.timeUpdate(audio);
+  expect(pause).not.toHaveBeenCalled();
+  time = 2;
+  fireEvent.timeUpdate(audio);
+  expect(pause).toHaveBeenCalledTimes(1);
+});
+
+test("una imagen nueva conserva la duración sin recorte y un video nuevo entra desde el inicio", async () => {
+  stubPlayback();
+  const user = userEvent.setup();
+  render(<Editor />);
+
+  await addMedium(user, fileWithDuration("clip.mp4", "video/mp4", 10));
+  await addMedium(user, new File(["imagen"], "foto.png", { type: "image/png" }));
+  let scene = await addSceneFrom(user, "clip.mp4");
+  putDuration(scene, "5");
+  expect(await within(scene).findByText("5 s")).toBeInTheDocument();
+
+  let replace = within(scene).getByRole("combobox", { name: "Reemplazar" });
+  await user.selectOptions(replace, within(replace).getByRole("option", { name: "foto.png" }));
+  expect(await within(scene).findByText("foto.png", { selector: "p" })).toBeInTheDocument();
+  expect(within(scene).getByText("5 s")).toBeInTheDocument();
+  expect(within(scene).queryByText("0 s")).not.toBeInTheDocument();
+  expect(screen.getByText("El short dura 5 s")).toBeInTheDocument();
+  expect(within(scene).getByRole("region", { name: "Cuadro" }).querySelector("video")).toBeNull();
+
+  replace = within(scene).getByRole("combobox", { name: "Reemplazar" });
+  await user.selectOptions(replace, within(replace).getByRole("option", { name: "clip.mp4" }));
+  expect(await within(scene).findByText("0 s")).toBeInTheDocument();
+  expect(within(scene).getByText("5 s")).toBeInTheDocument();
+  expect(within(scene).getByText("clip.mp4", { selector: "p" })).toBeInTheDocument();
+  const video = within(scene).getByRole("region", { name: "Cuadro" }).querySelector("video");
+  expect(video).toHaveProperty("muted", true);
+  expect(video).toHaveProperty("loop", false);
+
+  scene = await openScene(user, "clip.mp4");
+  expect(within(scene).getByText("5 s")).toBeInTheDocument();
+  expect(within(scene).getByText("0 s")).toBeInTheDocument();
+});
+
+test("un video sin duración positiva se niega como reemplazo y puede seguir en la biblioteca", async () => {
+  stubPlayback();
+  const user = userEvent.setup();
+  render(<Editor />);
+
+  await addMedium(user, new File(["imagen"], "foto.png", { type: "image/png" }));
+  await addMedium(user, fileWithDuration("vacio.mp4", "video/mp4", 0));
+  const scene = await addSceneFrom(user, "foto.png");
+  const replace = within(scene).getByRole("combobox", { name: "Reemplazar" });
+  await user.selectOptions(replace, within(replace).getByRole("option", { name: "vacio.mp4" }));
+  await settle();
+
+  expect(within(scene).getByText("foto.png", { selector: "p" })).toBeInTheDocument();
+  expect(within(scene).getByText("3 s")).toBeInTheDocument();
+  expect(within(scene).queryByText("0 s")).not.toBeInTheDocument();
+  expect(screen.getByText("El short dura 3 s")).toBeInTheDocument();
+  expect(within(scene).getByRole("region", { name: "Cuadro" }).querySelector("img")).not.toBeNull();
+  expect((replace as HTMLSelectElement).value).not.toBe("");
+  expect(within(replace).getByRole("option", { name: "foto.png" })).toHaveProperty("selected", true);
+
+  await user.click(screen.getByRole("button", { name: "Biblioteca" }));
+  expect(
+    within(screen.getByRole("list", { name: "Medios" })).getByRole("listitem", {
+      name: "vacio.mp4 video",
+    }),
+  ).toBeInTheDocument();
 });
