@@ -1,0 +1,390 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Prototipo — Qué tamaño tienen los cuadros</title>
+<!--
+  Three variants of the frame sizes, switchable via ?variant=.
+  The repo's editor has no Vista previa to host them.
+  A — El cuadro llena. B — La lista marca el paso. C — Medidas a la mitad.
+  PROTOTIPO. No es el editor.
+-->
+<style>
+  :root {
+    --text: #1a1a1a;
+    --bg: #f7f7f5;
+    --font: 16px;
+    --bar-icon: 20px;
+    --bar-control: 36px;
+    --section-icon: 20px;
+    --section-control: 36px;
+  }
+  * { box-sizing: border-box; }
+  html, body, #app { height: 100%; margin: 0; }
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: system-ui, sans-serif;
+    font-size: var(--font);
+    line-height: 1.35;
+  }
+  button, input, select {
+    font: inherit;
+    color: var(--text);
+    background: var(--bg);
+    border: 1px solid var(--text);
+    border-radius: 0;
+    height: var(--section-control);
+    padding: 0 10px;
+  }
+  button { cursor: pointer; }
+  button:hover, button:focus-visible, select:hover, select:focus-visible, input:hover, input:focus-visible,
+  .is-selected { background: var(--text); color: var(--bg); }
+  button:disabled { opacity: 0.4; cursor: default; }
+  h1, h2, p { margin: 0; font-weight: 500; }
+  h1 { font-size: 1em; }
+  h2 { font-size: 0.85em; letter-spacing: 0.04em; text-transform: uppercase; }
+  .layout { height: 100%; display: grid; grid-template-rows: auto minmax(0, 1fr); padding-bottom: 92px; }
+  .bar {
+    display: flex; gap: 8px; align-items: center; flex-wrap: wrap;
+    padding: 10px 12px; border-bottom: 1px solid var(--text); background: var(--bg);
+  }
+  .bar button, .bar select { height: var(--bar-control); }
+  .grow { flex: 1; }
+  .meta { opacity: 0.75; }
+  .body { min-height: 0; overflow: auto; padding: 16px; }
+  .stack { display: flex; flex-direction: column; gap: 12px; min-height: 0; height: 100%; }
+  .row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+  .phone {
+    container-type: size;
+    position: relative;
+    aspect-ratio: 9 / 16;
+    background: #111;
+    overflow: hidden;
+    border: 1px solid var(--text);
+    flex: none;
+  }
+  .layer { position: absolute; inset: 0; background-size: cover; background-position: center; }
+  .tx {
+    position: absolute; transform: translate(-50%, -50%);
+    margin: 0; line-height: 1.1; max-width: 90%;
+    font-size: calc(var(--ts) * 100cqh);
+    text-align: center;
+  }
+  .thumb { width: 42px; flex: none; }
+  .list { display: flex; flex-direction: column; min-height: 0; }
+  .scene {
+    display: grid; grid-template-columns: auto 1fr; gap: 12px; align-items: center;
+    padding: 10px 0; border-bottom: 1px solid var(--text);
+    background: transparent; color: inherit; border-left: 0; border-right: 0; border-top: 0;
+    width: 100%; text-align: left; height: auto; border-radius: 0;
+  }
+  .scene small { display: block; opacity: 0.75; }
+  .scene.is-selected { background: var(--text); color: var(--bg); }
+  .mark { font-size: 0.85em; }
+  .escena { display: flex; gap: 20px; align-items: flex-start; }
+  .datos { display: flex; flex-direction: column; gap: 10px; min-width: 220px; flex: 1; }
+  .field { display: flex; flex-direction: column; gap: 4px; }
+  .range { width: min(520px, 100%); padding: 0; border: 0; background: transparent; height: 24px; }
+  .range:hover, .range:focus-visible { background: transparent; color: var(--text); }
+  body[data-variant="A"] .preview-fit { flex: 1; min-height: 460px; display: grid; place-items: center; }
+  body[data-variant="A"] .preview-fit .phone { height: 100%; width: auto; max-height: 100%; }
+  body[data-variant="A"] .scene-fit { width: 120px; }
+  body[data-variant="B"] .preview-fit { display: grid; place-items: center; }
+  body[data-variant="B"] .preview-fit .phone { height: 240px; width: auto; }
+  body[data-variant="B"] .scene-fit { width: 120px; }
+  body[data-variant="B"] .thumb { width: 72px; }
+  body[data-variant="C"] .stack { width: min(420px, 100%); margin: 0 auto; }
+  body[data-variant="C"] .preview-fit { display: grid; place-items: center; }
+  body[data-variant="C"] .preview-fit .phone { width: 270px; }
+  body[data-variant="C"] .scene-fit { width: 135px; }
+  #switcher {
+    position: fixed; left: 50%; bottom: 14px; transform: translateX(-50%);
+    z-index: 20; display: flex; flex-direction: column; align-items: center; gap: 6px;
+    background: #111; color: #f5f5f5; padding: 8px 12px; border-radius: 18px;
+    box-shadow: 0 8px 24px rgba(0,0,0,.35); font: 14px/1.3 system-ui, sans-serif;
+    width: min(720px, calc(100vw - 24px));
+  }
+  #switcher .nav { display: flex; align-items: center; gap: 8px; }
+  #switcher button {
+    background: transparent; color: #f5f5f5; border: 1px solid #f5f5f5;
+    height: 32px; width: 32px; padding: 0; border-radius: 999px;
+  }
+  #switcher button:hover, #switcher button:focus-visible { background: #f5f5f5; color: #111; }
+  #switcher .detail { font-size: 12px; opacity: 0.85; text-align: center; }
+</style>
+</head>
+<body>
+<div id="app"></div>
+<div id="switcher"></div>
+<script>
+const VARIANTS = [
+  { key: "A", name: "El cuadro llena", order: ["Biblioteca", "Escenas", "Escena", "Apariencia", "Vista previa"], mark: "ninguna", place: "Vista previa al final de la barra" },
+  { key: "B", name: "La lista marca el paso", order: ["Biblioteca", "Escenas", "Escena", "Vista previa", "Apariencia"], mark: "las escenas que están en el cuadro", place: "Vista previa entre Escena y Apariencia" },
+  { key: "C", name: "Medidas a la mitad", order: ["Vista previa", "Biblioteca", "Escenas", "Escena", "Apariencia"], mark: "solo la escena que acaba de entrar", place: "Vista previa al inicio de la barra" }
+];
+const SCENES = [
+  { id: "s1", name: "Cielo", kind: "Imagen", file: "cielo.jpg", start: 0, duration: 3, look: "linear-gradient(180deg,#7ec8ff,#fff4c2)", text: "Amanece", color: "#1a1a1a", y: 22 },
+  { id: "s2", name: "Ciudad", kind: "Video", file: "ciudad.mp4", start: 2.5, duration: 3, look: "linear-gradient(160deg,#1b2440,#c45c26 55%,#e7c07b)", text: "Tráfico", color: "#ffffff", y: 50 },
+  { id: "s3", name: "Calle", kind: "Video", file: "calle.mp4", start: 5.5, duration: 4, look: "linear-gradient(180deg,#2c2c2c,#8a8f86 70%,#d6c7a1)", text: "Seguimos", color: "#ffffff", y: 78 }
+];
+const SHORT = 9.5;
+const FADE = { from: "s1", to: "s2", at: 2.5, seconds: 0.5 };
+
+const ui = { mode: "Vista previa", editId: "s1", t: 0, playing: false, last: 0 };
+const esc = (s) => String(s).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+const secs = (n) => (Math.round(n * 10) / 10).toString().replace(".", ",") + " s";
+const variant = () => VARIANTS.find((item) => item.key === (new URLSearchParams(location.search).get("variant") || "A")) || VARIANTS[0];
+const sceneById = (id) => SCENES.find((scene) => scene.id === id);
+
+function covers(scene, t) {
+  const end = scene.start + scene.duration;
+  return t >= scene.start && (t < end || (t === SHORT && scene.id === "s3"));
+}
+
+function opacity(scene, t) {
+  if (!covers(scene, t)) return 0;
+  if (t >= FADE.at && t < FADE.at + FADE.seconds) {
+    const p = (t - FADE.at) / FADE.seconds;
+    if (scene.id === FADE.from) return 1 - p;
+    if (scene.id === FADE.to) return p;
+  }
+  return 1;
+}
+
+function activeIds(t) {
+  return SCENES.filter((scene) => covers(scene, t)).map((scene) => scene.id);
+}
+
+function markedIds(t) {
+  const ids = activeIds(t);
+  const rule = variant().mark;
+  if (rule === "ninguna") return [];
+  if (rule === "solo la escena que acaba de entrar") {
+    const scenes = ids.map(sceneById);
+    scenes.sort((a, b) => a.start - b.start);
+    return scenes.length ? [scenes[scenes.length - 1].id] : [];
+  }
+  return ids;
+}
+
+function layers(t) {
+  return SCENES.map((scene) => ({ scene, opacity: opacity(scene, t) })).filter((layer) => layer.opacity > 0);
+}
+
+function phone(layersToPaint, className) {
+  const inner = layersToPaint.map(({ scene, opacity: alpha }) => `
+    <div class="layer" style="opacity:${alpha};background-image:${scene.look}">
+      <span class="tx" style="--ts:0.08;left:50%;top:${scene.y}%;color:${scene.color}">${esc(scene.text)}</span>
+    </div>`).join("");
+  return `<div class="phone ${className}">${inner || ""}</div>`;
+}
+
+function listHtml() {
+  const marks = new Set(markedIds(ui.t));
+  return `<div class="list" id="list">${SCENES.map((scene) => `
+    <button class="scene${marks.has(scene.id) ? " is-selected" : ""}" data-act="jump" data-scene="${scene.id}">
+      ${phone([{ scene, opacity: 1 }], "thumb")}
+      <span>${esc(scene.name)}<small>${scene.kind} · ${secs(scene.duration)} · fotograma de la entrada${marks.has(scene.id) ? " · En el recorrido" : ""}</small></span>
+    </button>`).join("")}</div>`;
+}
+
+function previewHtml() {
+  const atEnd = ui.t >= SHORT;
+  return `<div class="stack">
+    <div class="preview-fit" id="preview-fit">${phone(layers(ui.t), "preview")}</div>
+    ${listHtml()}
+    <div class="row">
+      <input class="range" id="range" type="range" min="0" max="${SHORT}" step="0.1" value="${ui.t}">
+      <span id="clock">${secs(ui.t)} / ${secs(SHORT)}</span>
+    </div>
+    <div class="row">
+      <button id="play" data-act="play" ${ui.playing ? "disabled" : ""}>Reproducir</button>
+      <button id="pause" data-act="pause" ${ui.playing ? "" : "disabled"}>Pausar</button>
+      <button data-act="render">Renderizar</button>
+    </div>
+    <p class="meta" id="render-note"></p>
+  </div>`;
+}
+
+function escenaHtml() {
+  const scene = sceneById(ui.editId);
+  return `<div class="escena">
+    <div class="scene-fit">${phone([{ scene, opacity: 1 }], "scene")}</div>
+    <div class="datos">
+      <div class="field"><span>Escena</span>
+        <select data-act="edit">${SCENES.map((item) => `<option value="${item.id}"${item.id === scene.id ? " selected" : ""}>${esc(item.name)}</option>`).join("")}</select>
+      </div>
+      <p>${esc(scene.file)} · ${scene.kind}</p>
+      <p>Duración ${secs(scene.duration)}</p>
+      <p>${scene.id === "s3" ? "Última escena" : scene.id === "s1" ? "Fundido · 0,5 s" : "Corte directo"}</p>
+      <div class="field"><label for="copy">Texto</label>
+        <input id="copy" data-act="copy" value="${esc(scene.text)}">
+      </div>
+    </div>
+  </div>`;
+}
+
+function stub(title, copy) {
+  return `<div class="stack"><h2>${title}</h2><p>${copy}</p></div>`;
+}
+
+function bodyHtml() {
+  if (ui.mode === "Vista previa") return previewHtml();
+  if (ui.mode === "Escena") return escenaHtml();
+  if (ui.mode === "Biblioteca") return stub("Biblioteca", "Los medios del proyecto. Este modo no es la pregunta del prototipo.");
+  if (ui.mode === "Escenas") return stub("Escenas", "El orden del proyecto. En Vista previa no se añade, no se elimina y no se reordena.");
+  return stub("Apariencia", "El feeling de este navegador. No cambia el cuadro del short.");
+}
+
+function render() {
+  const current = variant();
+  document.body.dataset.variant = current.key;
+  const modes = current.order.map((name) =>
+    `<button data-act="mode" data-mode="${name}" class="${ui.mode === name ? "is-selected" : ""}">${name}</button>`
+  ).join("");
+  document.getElementById("app").innerHTML = `
+    <div class="layout">
+      <header class="bar">
+        <h1>Proyecto</h1>
+        <span>${secs(SHORT)}</span>
+        <span class="grow"></span>
+        ${modes}
+      </header>
+      <main class="body">${bodyHtml()}</main>
+    </div>`;
+  const index = VARIANTS.indexOf(current);
+  document.getElementById("switcher").dataset.index = String(index);
+  document.getElementById("switcher").innerHTML = `
+    <div class="nav">
+      <button type="button" data-switch="-1" aria-label="Variante anterior">←</button>
+      <span>${current.key} — ${current.name}</span>
+      <button type="button" data-switch="1" aria-label="Variante siguiente">→</button>
+    </div>
+    <div class="detail" id="detail">${current.place}. La lista marca ${current.mark}.</div>`;
+  measure();
+}
+
+const seen = { preview: "—", scene: "—" };
+
+function measure() {
+  requestAnimationFrame(() => {
+    const preview = document.querySelector(".body .phone.preview");
+    const scene = document.querySelector(".body .phone.scene");
+    const box = (node) => `${Math.round(node.getBoundingClientRect().width)}×${Math.round(node.getBoundingClientRect().height)}`;
+    if (preview) seen.preview = box(preview);
+    if (scene) seen.scene = box(scene);
+    const detail = document.getElementById("detail");
+    const current = variant();
+    if (!detail) return;
+    detail.textContent = `${current.place}. La lista marca ${current.mark}. Vista previa ${seen.preview}. Escena ${seen.scene}.`;
+  });
+}
+
+function paintMoment() {
+  const fit = document.getElementById("preview-fit");
+  const list = document.getElementById("list");
+  const range = document.getElementById("range");
+  const clock = document.getElementById("clock");
+  if (!fit || !list) return;
+  fit.innerHTML = phone(layers(ui.t), "preview");
+  const marks = new Set(markedIds(ui.t));
+  list.querySelectorAll(".scene").forEach((button) => {
+    const on = marks.has(button.dataset.scene);
+    button.classList.toggle("is-selected", on);
+    const small = button.querySelector("small");
+    const scene = sceneById(button.dataset.scene);
+    small.textContent = `${scene.kind} · ${secs(scene.duration)} · fotograma de la entrada${on ? " · En el recorrido" : ""}`;
+  });
+  if (range && document.activeElement !== range) range.value = String(ui.t);
+  if (clock) clock.textContent = `${secs(ui.t)} / ${secs(SHORT)}`;
+}
+
+function tick(now) {
+  if (!ui.playing) return;
+  const dt = Math.min(0.05, (now - ui.last) / 1000);
+  ui.last = now;
+  ui.t = Math.min(SHORT, ui.t + dt);
+  if (ui.t >= SHORT) ui.playing = false;
+  if (ui.mode === "Vista previa") paintMoment();
+  if (ui.playing) requestAnimationFrame(tick);
+  else if (ui.mode === "Vista previa") render();
+}
+
+function setVariant(key) {
+  seen.preview = "—";
+  seen.scene = "—";
+  const url = new URL(location.href);
+  url.searchParams.set("variant", key);
+  history.replaceState(null, "", url);
+  render();
+}
+
+document.addEventListener("click", (event) => {
+  const switcher = event.target.closest("[data-switch]");
+  if (switcher) {
+    const index = Number(document.getElementById("switcher").dataset.index);
+    const dir = Number(switcher.dataset.switch);
+    setVariant(VARIANTS[(index + dir + VARIANTS.length) % VARIANTS.length].key);
+    return;
+  }
+  const el = event.target.closest("[data-act]");
+  if (!el) return;
+  if (el.dataset.act === "mode") ui.mode = el.dataset.mode;
+  if (el.dataset.act === "play") {
+    if (ui.t >= SHORT) return;
+    ui.playing = true;
+    ui.last = performance.now();
+    render();
+    requestAnimationFrame(tick);
+    return;
+  }
+  if (el.dataset.act === "pause") ui.playing = false;
+  if (el.dataset.act === "jump") {
+    ui.playing = false;
+    ui.t = sceneById(el.dataset.scene).start;
+  }
+  if (el.dataset.act === "render") {
+    const note = document.getElementById("render-note");
+    if (note) note.textContent = "En el prototipo no se produce el archivo.";
+    return;
+  }
+  render();
+});
+
+document.addEventListener("input", (event) => {
+  const el = event.target;
+  if (el.id === "range") {
+    ui.playing = false;
+    ui.t = Number(el.value);
+    paintMoment();
+  }
+  if (el.dataset.act === "copy") {
+    sceneById(ui.editId).text = el.value;
+    const scene = document.querySelector(".phone.scene .tx");
+    if (scene) scene.textContent = el.value;
+  }
+});
+
+document.addEventListener("change", (event) => {
+  const el = event.target;
+  if (el.dataset.act === "edit") {
+    ui.editId = el.value;
+    render();
+  }
+});
+
+document.addEventListener("keydown", (event) => {
+  if (event.key !== "ArrowLeft" && event.key !== "ArrowRight") return;
+  if (event.target.closest("input, textarea, select, [contenteditable]")) return;
+  const index = Number(document.getElementById("switcher").dataset.index);
+  const dir = event.key === "ArrowRight" ? 1 : -1;
+  setVariant(VARIANTS[(index + dir + VARIANTS.length) % VARIANTS.length].key);
+});
+
+window.addEventListener("resize", measure);
+render();
+</script>
+</body>
+</html>
