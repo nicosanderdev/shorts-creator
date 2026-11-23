@@ -538,6 +538,32 @@ function shortSeconds(scenes: Scene[]): number {
   return starts[starts.length - 1] + scenes[scenes.length - 1].duration;
 }
 
+function keptCuts(scenes: Scene[]): Map<string, { kind: "corte directo" | "fundido"; time: number | null }> {
+  const cuts = new Map<string, { kind: "corte directo" | "fundido"; time: number | null }>();
+  for (let index = 1; index < scenes.length; index += 1) {
+    const scene = scenes[index];
+    cuts.set(`${scenes[index - 1].id}>${scene.id}`, {
+      kind: scene.cutWithPrevious === "fundido" ? "fundido" : "corte directo",
+      time: scene.cutWithPrevious === "fundido" ? scene.fadeTime : null,
+    });
+  }
+  return cuts;
+}
+
+function applyCuts(
+  scenes: Scene[],
+  cuts: Map<string, { kind: "corte directo" | "fundido"; time: number | null }>,
+): Scene[] {
+  return scenes.map((scene, index) => {
+    if (index === 0) return { ...scene, cutWithPrevious: null, fadeTime: null };
+    const kept = cuts.get(`${scenes[index - 1].id}>${scene.id}`);
+    if (!kept || kept.kind !== "fundido" || kept.time === null) {
+      return { ...scene, cutWithPrevious: "corte directo", fadeTime: null };
+    }
+    return { ...scene, cutWithPrevious: "fundido", fadeTime: kept.time };
+  });
+}
+
 function shrinkFades(scenes: Scene[]): Scene[] {
   return scenes.map((scene, index) => {
     if (index === 0 || scene.cutWithPrevious !== "fundido" || scene.fadeTime === null) return scene;
@@ -1274,6 +1300,44 @@ export function Editor() {
     });
   }
 
+  function arrangeScenes(next: Scene[], previous: Scene[]) {
+    return applyCuts(next, keptCuts(previous));
+  }
+
+  function deleteScene(sceneId: string) {
+    setSelectedSceneId((current) => (current === sceneId ? null : current));
+    setUser((current) => {
+      const currentProject = current.projects[0];
+      const scenes = arrangeScenes(
+        currentProject.scenes.filter((item) => item.id !== sceneId),
+        currentProject.scenes,
+      );
+      return {
+        ...current,
+        projects: [{ ...currentProject, scenes }, ...current.projects.slice(1)],
+      };
+    });
+  }
+
+  function moveScene(sceneId: string, direction: -1 | 1) {
+    setUser((current) => {
+      const currentProject = current.projects[0];
+      const index = currentProject.scenes.findIndex((item) => item.id === sceneId);
+      const target = index + direction;
+      if (index < 0 || target < 0 || target >= currentProject.scenes.length) return current;
+      const scenes = [...currentProject.scenes];
+      const [moved] = scenes.splice(index, 1);
+      scenes.splice(target, 0, moved);
+      return {
+        ...current,
+        projects: [
+          { ...currentProject, scenes: arrangeScenes(scenes, currentProject.scenes) },
+          ...current.projects.slice(1),
+        ],
+      };
+    });
+  }
+
   function setValor<K extends keyof Apariencia>(key: K, value: Apariencia[K]) {
     setApariencia((current) => {
       const next = { ...current, [key]: value };
@@ -1373,20 +1437,37 @@ export function Editor() {
             </div>
           ) : null}
           <ul aria-label="Escenas">
-            {project.scenes.map((scene) => {
+            {project.scenes.map((scene, index) => {
               const medium = user.library.find((item) => item.id === scene.mediumId);
+              const name = medium?.name ?? "Escena";
               return (
-                <li key={scene.id}>
+                <li key={scene.id} aria-label={name}>
                   <button
                     type="button"
                     onClick={() => {
                       setSelectedSceneId(scene.id);
-                      const index = project.scenes.findIndex((item) => item.id === scene.id);
                       setPlayhead(scenePreviewTime(project.scenes, index));
                       setMode("escena");
                     }}
                   >
-                    {medium?.name}
+                    {name}
+                  </button>
+                  <button
+                    type="button"
+                    disabled={index === 0}
+                    onClick={() => moveScene(scene.id, -1)}
+                  >
+                    Mover antes
+                  </button>
+                  <button
+                    type="button"
+                    disabled={index === project.scenes.length - 1}
+                    onClick={() => moveScene(scene.id, 1)}
+                  >
+                    Mover después
+                  </button>
+                  <button type="button" onClick={() => deleteScene(scene.id)}>
+                    Eliminar
                   </button>
                 </li>
               );

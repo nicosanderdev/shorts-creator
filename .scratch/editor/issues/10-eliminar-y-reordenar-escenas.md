@@ -4,16 +4,16 @@
 
 **Blocked by:** 09 — El fundido entre dos escenas
 
-**Status:** ready-for-agent
+**Status:** done
 
-- [ ] Eliminar saca la escena con sus textos y su narración
-- [ ] El medio sigue en la biblioteca
-- [ ] Desaparecen los cortes que tocaban a esa escena, incluido el tiempo de fundido que tuvieran
-- [ ] Si dos escenas quedan vecinas y antes no lo eran, ese corte nace en corte directo
-- [ ] Eliminar la primera, la última o la única no crea un corte
-- [ ] Eliminar la única deja el proyecto sin escenas y la duración del short en cero
-- [ ] Reordenar mueve una escena a otra posición de la lista
-- [ ] Un corte sigue existiendo, con su transición, solo cuando esas dos escenas quedan juntas y en el mismo orden
-- [ ] Si el par se separa o se invierte, el corte desaparece con su tiempo
-- [ ] Cada par vecino nuevo nace en corte directo
-- [ ] Eliminar y reordenar no crean un fundido
+- [x] Eliminar saca la escena con sus textos y su narración
+- [x] El medio sigue en la biblioteca
+- [x] Desaparecen los cortes que tocaban a esa escena, incluido el tiempo de fundido que tuvieran
+- [x] Si dos escenas quedan vecinas y antes no lo eran, ese corte nace en corte directo
+- [x] Eliminar la primera, la última o la única no crea un corte
+- [x] Eliminar la única deja el proyecto sin escenas y la duración del short en cero
+- [x] Reordenar mueve una escena a otra posición de la lista
+- [x] Un corte sigue existiendo, con su transición, solo cuando esas dos escenas quedan juntas y en el mismo orden
+- [x] Si el par se separa o se invierte, el corte desaparece con su tiempo
+- [x] Cada par vecino nuevo nace en corte directo
+- [x] Eliminar y reordenar no crean un fundido

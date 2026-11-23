@@ -376,7 +376,7 @@ test("una imagen nace en tres segundos, sin recorte, y llena el cuadro", async (
   expect(
     within(screen.getByRole("list", { name: "Escenas" }))
       .getAllByRole("listitem")
-      .map((item) => item.textContent),
+      .map((item) => item.getAttribute("aria-label")),
   ).toEqual(["foto.png"]);
   expect(screen.queryByRole("region", { name: "Escena" })).not.toBeInTheDocument();
 });
@@ -535,7 +535,7 @@ test("un video sin duración positiva no se añade y el proyecto queda como esta
   expect(
     within(screen.getByRole("list", { name: "Escenas" }))
       .getAllByRole("listitem")
-      .map((item) => item.textContent),
+      .map((item) => item.getAttribute("aria-label")),
   ).toEqual(["foto.png"]);
 
   await user.click(screen.getByRole("button", { name: "Escena" }));
@@ -623,7 +623,7 @@ test("dos escenas quedan en orden, la segunda nace en corte directo y la barra s
   expect(
     within(screen.getByRole("list", { name: "Escenas" }))
       .getAllByRole("listitem")
-      .map((item) => item.textContent),
+      .map((item) => item.getAttribute("aria-label")),
   ).toEqual(["foto.png", "otra.png"]);
   expect(screen.queryByRole("region", { name: "Escena" })).not.toBeInTheDocument();
 
@@ -659,7 +659,7 @@ test("al volver, la escena añadida sigue en el proyecto", async () => {
   expect(
     within(screen.getByRole("list", { name: "Escenas" }))
       .getAllByRole("listitem")
-      .map((item) => item.textContent),
+      .map((item) => item.getAttribute("aria-label")),
   ).toEqual(["foto.png"]);
 
   await user.click(
@@ -1740,10 +1740,10 @@ test("quitar un medio usado como medio visual se niega y deja biblioteca y proye
 
   expect(screen.getByText("El short dura 6 s")).toBeInTheDocument();
   await user.click(screen.getByRole("button", { name: "Escenas" }));
-  const sceneButtons = within(screen.getByRole("list", { name: "Escenas" })).getAllByRole("button");
-  expect(sceneButtons.map((button) => button.textContent)).toEqual(["foto.png", "otra.png"]);
+  const scenes = screen.getByRole("list", { name: "Escenas" });
+  expect(libraryLabels(scenes)).toEqual(["foto.png", "otra.png"]);
 
-  await user.click(sceneButtons[0]);
+  await user.click(within(scenes).getByRole("button", { name: "foto.png" }));
   const scene = await screen.findByRole("region", { name: "Escena" });
   expect(within(scene).getByRole("img", { name: "foto.png" }).getAttribute("src")).toBeTruthy();
 });
@@ -1996,7 +1996,7 @@ test("reemplazar cambia el medio de esa escena, la deja en su sitio y el corte s
   expect(
     within(screen.getByRole("list", { name: "Escenas" }))
       .getAllByRole("listitem")
-      .map((item) => item.textContent),
+      .map((item) => item.getAttribute("aria-label")),
   ).toEqual(["clip.mp4", "otra.png"]);
 
   const second = await openScene(user, "otra.png");
@@ -2517,4 +2517,222 @@ test("añadir una escena no crea un fundido", async () => {
   expect(within(middle).getByRole("combobox", { name: "Corte con la siguiente" })).toHaveValue(
     "corte directo",
   );
+});
+
+async function sceneAction(
+  user: ReturnType<typeof userEvent.setup>,
+  name: string,
+  action: "Eliminar" | "Mover antes" | "Mover después",
+) {
+  if (!screen.queryByRole("region", { name: "Escenas" })) {
+    await user.click(screen.getByRole("button", { name: "Escenas" }));
+  }
+  const item = within(screen.getByRole("list", { name: "Escenas" })).getByRole("listitem", { name });
+  await user.click(within(item).getByRole("button", { name: action }));
+}
+
+test("eliminar saca la escena con sus textos y su narración, y el medio sigue en la biblioteca", async () => {
+  stubPlayback();
+  const user = userEvent.setup();
+  render(<Editor />);
+
+  await addMedium(user, new File(["imagen"], "foto.png", { type: "image/png" }));
+  await addMedium(user, new File(["otra"], "otra.png", { type: "image/png" }));
+  await addMedium(user, fileWithDuration("voz.mp3", "audio/mpeg", 4));
+  let scene = await addSceneFrom(user, "foto.png");
+  await user.click(within(scene).getByRole("button", { name: "Añadir texto" }));
+  const content = within(scene).getByRole("textbox", { name: "Contenido" });
+  await user.clear(content);
+  await user.type(content, "Adiós");
+  const narration = within(scene).getByRole("combobox", { name: "Narración" });
+  await user.selectOptions(narration, within(narration).getByRole("option", { name: "voz.mp3" }));
+  await addSceneFrom(user, "otra.png");
+
+  await sceneAction(user, "foto.png", "Eliminar");
+  const list = screen.getByRole("list", { name: "Escenas" });
+  expect(libraryLabels(list)).toEqual(["otra.png"]);
+  expect(screen.getByText("El short dura 3 s")).toBeInTheDocument();
+  expect(screen.queryByText("Adiós")).not.toBeInTheDocument();
+
+  scene = await openScene(user, "otra.png");
+  expect(within(scene).queryByText("Adiós")).not.toBeInTheDocument();
+  expect(within(scene).getByRole("combobox", { name: "Narración" })).toHaveValue("");
+  expect(scene.querySelector("audio")).toBeNull();
+  expect(within(scene).queryByText("corte directo")).not.toBeInTheDocument();
+
+  await user.click(screen.getByRole("button", { name: "Biblioteca" }));
+  const library = screen.getByRole("list", { name: "Medios" });
+  expect(within(library).getByRole("listitem", { name: "foto.png imagen" })).toBeInTheDocument();
+  expect(within(library).getByRole("listitem", { name: "voz.mp3 audio" })).toBeInTheDocument();
+  await removeLibraryMedium(user, library, "voz.mp3 audio");
+  expect(within(library).queryByRole("listitem", { name: "voz.mp3 audio" })).not.toBeInTheDocument();
+});
+
+test("al eliminar desaparecen sus cortes y el par que queda junto por primera vez nace en corte directo", async () => {
+  const user = userEvent.setup();
+  render(<Editor />);
+
+  await addMedium(user, new File(["una"], "uno.png", { type: "image/png" }));
+  await addMedium(user, new File(["dos"], "dos.png", { type: "image/png" }));
+  await addMedium(user, new File(["tres"], "tres.png", { type: "image/png" }));
+  await addSceneFrom(user, "uno.png");
+  await addSceneFrom(user, "dos.png");
+  await addSceneFrom(user, "tres.png");
+  let scene = await openScene(user, "uno.png");
+  await chooseCut(user, scene, "fundido");
+  fireEvent.input(within(scene).getByRole("spinbutton", { name: "Tiempo del fundido" }), {
+    target: { value: "2" },
+  });
+  scene = await openScene(user, "dos.png");
+  await chooseCut(user, scene, "fundido");
+  fireEvent.input(within(scene).getByRole("spinbutton", { name: "Tiempo del fundido" }), {
+    target: { value: "1" },
+  });
+  expect(screen.getByText("El short dura 6 s")).toBeInTheDocument();
+
+  await sceneAction(user, "dos.png", "Eliminar");
+  expect(libraryLabels(screen.getByRole("list", { name: "Escenas" }))).toEqual(["uno.png", "tres.png"]);
+  expect(screen.getByText("El short dura 6 s")).toBeInTheDocument();
+
+  scene = await openScene(user, "tres.png");
+  expect(within(scene).getByText("corte directo")).toBeInTheDocument();
+  expect(within(scene).queryByText("fundido")).not.toBeInTheDocument();
+  expect(within(scene).queryByRole("spinbutton", { name: "Tiempo del fundido" })).not.toBeInTheDocument();
+});
+
+test("eliminar la primera conserva el corte siguiente y eliminar la última no crea un corte", async () => {
+  const user = userEvent.setup();
+  render(<Editor />);
+
+  await addMedium(user, new File(["una"], "uno.png", { type: "image/png" }));
+  await addMedium(user, new File(["dos"], "dos.png", { type: "image/png" }));
+  await addMedium(user, new File(["tres"], "tres.png", { type: "image/png" }));
+  await addSceneFrom(user, "uno.png");
+  await addSceneFrom(user, "dos.png");
+  await addSceneFrom(user, "tres.png");
+  let scene = await openScene(user, "uno.png");
+  await chooseCut(user, scene, "fundido");
+  scene = await openScene(user, "dos.png");
+  await chooseCut(user, scene, "fundido");
+  fireEvent.input(within(scene).getByRole("spinbutton", { name: "Tiempo del fundido" }), {
+    target: { value: "2" },
+  });
+
+  await sceneAction(user, "uno.png", "Eliminar");
+  expect(libraryLabels(screen.getByRole("list", { name: "Escenas" }))).toEqual(["dos.png", "tres.png"]);
+  scene = await openScene(user, "dos.png");
+  expect(within(scene).queryByText("fundido")).not.toBeInTheDocument();
+  expect(within(scene).queryByText("corte directo")).not.toBeInTheDocument();
+  scene = await openScene(user, "tres.png");
+  expect(within(scene).getByText("fundido")).toBeInTheDocument();
+  expect(screen.getByText("El short dura 4 s")).toBeInTheDocument();
+
+  await sceneAction(user, "tres.png", "Eliminar");
+  expect(libraryLabels(screen.getByRole("list", { name: "Escenas" }))).toEqual(["dos.png"]);
+  scene = await openScene(user, "dos.png");
+  expect(within(scene).queryByText("fundido")).not.toBeInTheDocument();
+  expect(within(scene).queryByText("corte directo")).not.toBeInTheDocument();
+  expect(within(scene).queryByRole("combobox", { name: "Corte con la siguiente" })).not.toBeInTheDocument();
+  expect(screen.getByText("El short dura 3 s")).toBeInTheDocument();
+});
+
+test("eliminar la única deja el proyecto sin escenas y la duración del short en cero", async () => {
+  const user = userEvent.setup();
+  render(<Editor />);
+
+  await addMedium(user, new File(["imagen"], "foto.png", { type: "image/png" }));
+  await addSceneFrom(user, "foto.png");
+  await sceneAction(user, "foto.png", "Eliminar");
+
+  expect(screen.getByRole("list", { name: "Escenas" })).toBeEmptyDOMElement();
+  expect(screen.getByText("El proyecto no tiene escenas.")).toBeInTheDocument();
+  expect(screen.getByText("El short dura 0 s")).toBeInTheDocument();
+
+  await user.click(screen.getByRole("button", { name: "Escena" }));
+  expect(screen.getByText("No hay una escena que editar.")).toBeInTheDocument();
+
+  await user.click(screen.getByRole("button", { name: "Biblioteca" }));
+  expect(
+    within(screen.getByRole("list", { name: "Medios" })).getByRole("listitem", {
+      name: "foto.png imagen",
+    }),
+  ).toBeInTheDocument();
+});
+
+test("reordenar conserva el corte solo cuando las dos escenas siguen juntas y en el mismo orden", async () => {
+  const user = userEvent.setup();
+  render(<Editor />);
+
+  await addMedium(user, new File(["una"], "uno.png", { type: "image/png" }));
+  await addMedium(user, new File(["dos"], "dos.png", { type: "image/png" }));
+  await addMedium(user, new File(["tres"], "tres.png", { type: "image/png" }));
+  await addMedium(user, new File(["cuatro"], "cuatro.png", { type: "image/png" }));
+  await addSceneFrom(user, "uno.png");
+  await addSceneFrom(user, "dos.png");
+  await addSceneFrom(user, "tres.png");
+  await addSceneFrom(user, "cuatro.png");
+  let scene = await openScene(user, "uno.png");
+  await chooseCut(user, scene, "fundido");
+  fireEvent.input(within(scene).getByRole("spinbutton", { name: "Tiempo del fundido" }), {
+    target: { value: "2" },
+  });
+
+  await user.click(screen.getByRole("button", { name: "Escenas" }));
+  const list = screen.getByRole("list", { name: "Escenas" });
+  const items = within(list).getAllByRole("listitem");
+  expect(within(items[0]).getByRole("button", { name: "Mover antes" })).toBeDisabled();
+  expect(within(items[3]).getByRole("button", { name: "Mover después" })).toBeDisabled();
+
+  await sceneAction(user, "cuatro.png", "Mover antes");
+  expect(libraryLabels(screen.getByRole("list", { name: "Escenas" }))).toEqual([
+    "uno.png",
+    "dos.png",
+    "cuatro.png",
+    "tres.png",
+  ]);
+
+  scene = await openScene(user, "dos.png");
+  expect(within(scene).getByText("fundido")).toBeInTheDocument();
+  scene = await openScene(user, "uno.png");
+  expect(within(scene).getByRole("spinbutton", { name: "Tiempo del fundido" })).toHaveValue(2);
+  scene = await openScene(user, "cuatro.png");
+  expect(within(scene).getByText("corte directo")).toBeInTheDocument();
+  expect(within(scene).queryByText("fundido")).not.toBeInTheDocument();
+  expect(screen.getByText("El short dura 10 s")).toBeInTheDocument();
+
+  await sceneAction(user, "dos.png", "Mover después");
+  expect(libraryLabels(screen.getByRole("list", { name: "Escenas" }))).toEqual([
+    "uno.png",
+    "cuatro.png",
+    "dos.png",
+    "tres.png",
+  ]);
+  scene = await openScene(user, "dos.png");
+  expect(within(scene).getByText("corte directo")).toBeInTheDocument();
+  expect(within(scene).queryByText("fundido")).not.toBeInTheDocument();
+  expect(screen.getByText("El short dura 12 s")).toBeInTheDocument();
+});
+
+test("si el par se invierte el corte desaparece y el par nuevo nace en corte directo", async () => {
+  const user = userEvent.setup();
+  render(<Editor />);
+
+  await addMedium(user, new File(["una"], "uno.png", { type: "image/png" }));
+  await addMedium(user, new File(["dos"], "dos.png", { type: "image/png" }));
+  await addSceneFrom(user, "uno.png");
+  await addSceneFrom(user, "dos.png");
+  const scene = await openScene(user, "uno.png");
+  await chooseCut(user, scene, "fundido");
+  fireEvent.input(within(scene).getByRole("spinbutton", { name: "Tiempo del fundido" }), {
+    target: { value: "2" },
+  });
+  expect(screen.getByText("El short dura 4 s")).toBeInTheDocument();
+
+  await sceneAction(user, "dos.png", "Mover antes");
+  expect(libraryLabels(screen.getByRole("list", { name: "Escenas" }))).toEqual(["dos.png", "uno.png"]);
+  const moved = await openScene(user, "uno.png");
+  expect(within(moved).getByText("corte directo")).toBeInTheDocument();
+  expect(within(moved).queryByText("fundido")).not.toBeInTheDocument();
+  expect(within(moved).queryByRole("spinbutton", { name: "Tiempo del fundido" })).not.toBeInTheDocument();
+  expect(screen.getByText("El short dura 6 s")).toBeInTheDocument();
 });
