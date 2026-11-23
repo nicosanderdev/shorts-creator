@@ -32,7 +32,7 @@ Marco cerrado al chartar. Las sesiones siguientes lo toman como dado:
 
 ## Not yet specified
 
-- Los parámetros del archivo que no cambian lo que la persona recibe (bitrate, códec, extensión), si la investigación los deja abiertos.
+<!-- nada en alcance que todavía no se pueda escribir como ticket -->
 
 ## Out of scope
 

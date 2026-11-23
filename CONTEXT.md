@@ -25,16 +25,24 @@ El tramo de un video que usa una escena. Va de la entrada a la salida, sin pasar
 _Avoid_: trim, corte
 
 **Texto**:
-Un bloque de copy en pantalla durante toda la escena. Una escena puede tener varios a la vez.
+Un bloque de copy en pantalla durante toda la escena. Una escena puede tener varios a la vez. Su posición y su tamaño se nombran en porcentaje del cuadro.
 _Avoid_: título, subtítulo, caption
 
 **Short**:
 El video ya renderizado, vertical, listo para ver en el celular.
 _Avoid_: video, proyecto, reel
 
+**Renderizar**:
+La operación del editor que produce el short como archivo.
+_Avoid_: compilar, exportar
+
 **Cuadro**:
 El rectángulo vertical del short, donde se ven el medio visual y los textos.
 _Avoid_: lienzo, frame, pantalla
+
+**Recorrido**:
+El momento en el que está el short, y el control que lo mueve de punta a punta.
+_Avoid_: recorrer, timeline, playhead, barra
 
 **Biblioteca**:
 El conjunto de medios de un usuario. Cualquier proyecto de ese usuario puede usarlos.
@@ -57,8 +65,12 @@ La herramienta con la que una persona modifica un proyecto a mano.
 _Avoid_: motor, generador
 
 **Modo**:
-Una superficie de trabajo del editor. Se muestra una por vez: la biblioteca, las escenas, la escena elegida o la apariencia.
-_Avoid_: pestaña, vista, pantalla
+Una superficie de trabajo del editor. Se muestra una por vez: la biblioteca, las escenas, la escena elegida, la vista previa o la apariencia.
+_Avoid_: pestaña, pantalla
+
+**Vista previa**:
+El modo en el que se juzga el short. Muestra el cuadro, la lista de escenas y el recorrido, y desde ahí se reproduce y se renderiza.
+_Avoid_: preview, pestaña
 
 **Apariencia**:
 Los valores del feeling de la aplicación en este navegador: tamaño de la tipografía, color del texto, color de fondo, y tamaño de los iconos y de los elementos de las barras y de las secciones. El color del texto pinta la letra, los iconos y el texto de los elementos; el color de fondo pinta las barras, las secciones y los elementos.
