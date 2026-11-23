@@ -60,7 +60,7 @@ afterEach(() => {
   restorePlayback?.();
 });
 
-const modes = ["Biblioteca", "Escenas", "Escena", "Apariencia"] as const;
+const modes = ["Biblioteca", "Escenas", "Escena", "Apariencia", "Vista previa"] as const;
 
 function libraryLabels(list: HTMLElement) {
   return within(list)
@@ -94,6 +94,11 @@ test("la barra sigue visible y en la pantalla hay un solo modo", async () => {
   render(<Editor />);
 
   const bar = screen.getByRole("banner");
+  expect(
+    within(bar)
+      .getAllByRole("button")
+      .map((button) => button.textContent),
+  ).toEqual([...modes]);
   for (const mode of modes) {
     expect(within(bar).getByRole("button", { name: mode })).toBeInTheDocument();
   }
@@ -106,6 +111,7 @@ test("la barra sigue visible y en la pantalla hay un solo modo", async () => {
   expect(screen.queryByRole("region", { name: "Escenas" })).not.toBeInTheDocument();
   expect(screen.queryByRole("region", { name: "Escena" })).not.toBeInTheDocument();
   expect(screen.queryByRole("region", { name: "Apariencia" })).not.toBeInTheDocument();
+  expect(screen.queryByRole("region", { name: "Vista previa" })).not.toBeInTheDocument();
 
   await user.click(within(bar).getByRole("button", { name: "Escenas" }));
   expect(within(bar).getByRole("heading", { name: "Proyecto" })).toBeInTheDocument();
@@ -115,6 +121,7 @@ test("la barra sigue visible y en la pantalla hay un solo modo", async () => {
   expect(screen.queryByRole("region", { name: "Biblioteca" })).not.toBeInTheDocument();
   expect(screen.queryByRole("region", { name: "Escena" })).not.toBeInTheDocument();
   expect(screen.queryByRole("region", { name: "Apariencia" })).not.toBeInTheDocument();
+  expect(screen.queryByRole("region", { name: "Vista previa" })).not.toBeInTheDocument();
 
   await user.click(within(bar).getByRole("button", { name: "Escena" }));
   expect(within(bar).getByRole("heading", { name: "Proyecto" })).toBeInTheDocument();
@@ -123,6 +130,7 @@ test("la barra sigue visible y en la pantalla hay un solo modo", async () => {
   expect(screen.queryByRole("region", { name: "Biblioteca" })).not.toBeInTheDocument();
   expect(screen.queryByRole("region", { name: "Escenas" })).not.toBeInTheDocument();
   expect(screen.queryByRole("region", { name: "Apariencia" })).not.toBeInTheDocument();
+  expect(screen.queryByRole("region", { name: "Vista previa" })).not.toBeInTheDocument();
 
   await user.click(within(bar).getByRole("button", { name: "Apariencia" }));
   expect(within(bar).getByRole("heading", { name: "Proyecto" })).toBeInTheDocument();
@@ -131,6 +139,16 @@ test("la barra sigue visible y en la pantalla hay un solo modo", async () => {
   expect(screen.queryByRole("region", { name: "Biblioteca" })).not.toBeInTheDocument();
   expect(screen.queryByRole("region", { name: "Escenas" })).not.toBeInTheDocument();
   expect(screen.queryByRole("region", { name: "Escena" })).not.toBeInTheDocument();
+  expect(screen.queryByRole("region", { name: "Vista previa" })).not.toBeInTheDocument();
+
+  await user.click(within(bar).getByRole("button", { name: "Vista previa" }));
+  expect(within(bar).getByRole("heading", { name: "Proyecto" })).toBeInTheDocument();
+  expect(within(bar).getByText("El short dura 0 s")).toBeInTheDocument();
+  expect(screen.getByRole("region", { name: "Vista previa" })).toBeInTheDocument();
+  expect(screen.queryByRole("region", { name: "Biblioteca" })).not.toBeInTheDocument();
+  expect(screen.queryByRole("region", { name: "Escenas" })).not.toBeInTheDocument();
+  expect(screen.queryByRole("region", { name: "Escena" })).not.toBeInTheDocument();
+  expect(screen.queryByRole("region", { name: "Apariencia" })).not.toBeInTheDocument();
 });
 
 test("al volver, el proyecto y la biblioteca siguen vacíos", async () => {
@@ -367,9 +385,13 @@ test("una imagen nace en tres segundos, sin recorte, y llena el cuadro", async (
   const frame = within(scene).getByRole("region", { name: "Cuadro" });
   const image = within(frame).getByRole("img", { name: "foto.png" });
   expect(image).toHaveStyle({ objectFit: "cover", objectPosition: "center" });
-  expect(frame).toHaveStyle({ aspectRatio: "9 / 16", overflow: "hidden" });
+  expect(frame).toHaveStyle({
+    width: "120px",
+    aspectRatio: "9 / 16",
+    overflow: "hidden",
+    flexGrow: "0",
+  });
   expect(frame.parentElement).toHaveStyle({ display: "flex", flexDirection: "row" });
-  expect(frame).toHaveStyle({ flexGrow: "2" });
   expect(frame.nextElementSibling).toHaveStyle({ flexGrow: "1" });
 
   await user.click(screen.getByRole("button", { name: "Escenas" }));
@@ -379,6 +401,171 @@ test("una imagen nace en tres segundos, sin recorte, y llena el cuadro", async (
       .map((item) => item.getAttribute("aria-label")),
   ).toEqual(["foto.png"]);
   expect(screen.queryByRole("region", { name: "Escena" })).not.toBeInTheDocument();
+});
+
+test("el cuadro de Escena mide 120 px de ancho, conserva la proporción del short y queda al lado de los datos", async () => {
+  const user = userEvent.setup();
+  render(<Editor />);
+
+  await user.click(screen.getByRole("button", { name: "Biblioteca" }));
+  await user.upload(
+    screen.getByLabelText("Incorporar"),
+    new File(["imagen"], "foto.png", { type: "image/png" }),
+  );
+  await user.click(screen.getByRole("button", { name: "Escenas" }));
+  await user.click(screen.getByRole("button", { name: "Añadir" }));
+
+  const scene = await screen.findByRole("region", { name: "Escena" });
+  const cuadro = within(scene).getByRole("region", { name: "Cuadro" });
+  const datos = cuadro.nextElementSibling as HTMLElement;
+  expect(within(datos).getByText("foto.png", { selector: "p" })).toBeInTheDocument();
+  expect(within(datos).getByRole("spinbutton", { name: "Duración" })).toBeInTheDocument();
+  expect(cuadro).toHaveStyle({ width: "120px", aspectRatio: "9 / 16", overflow: "hidden" });
+  expect(cuadro.parentElement).toHaveStyle({ display: "flex", flexDirection: "row" });
+});
+
+test("el cuadro muestra el inicio de la escena elegida, sola y a opacidad plena, con el encaje y los textos", async () => {
+  const user = userEvent.setup();
+  render(<Editor />);
+
+  await addMedium(user, new File(["una"], "foto.png", { type: "image/png" }));
+  await addMedium(user, new File(["otra"], "otra.png", { type: "image/png" }));
+  await addSceneFrom(user, "foto.png");
+  let scene = await addSceneFrom(user, "otra.png");
+  await user.click(within(scene).getByRole("button", { name: "Añadir texto" }));
+  const content = within(scene).getByRole("textbox", { name: "Contenido" });
+  await user.clear(content);
+  await user.type(content, "Sola");
+
+  scene = await openScene(user, "foto.png");
+  await chooseCut(user, scene, "fundido");
+  scene = await openScene(user, "otra.png");
+  putDuration(scene, "0.4");
+  scene = await openScene(user, "otra.png");
+
+  const cuadro = within(scene).getByRole("region", { name: "Cuadro" });
+  const image = within(cuadro).getByRole("img", { name: "otra.png" });
+  expect(within(cuadro).queryByRole("img", { name: "foto.png" })).not.toBeInTheDocument();
+  expect(image).toHaveStyle({ objectFit: "cover", objectPosition: "center" });
+  expect(image.parentElement).toHaveStyle({ opacity: "1" });
+  expect(cuadro).toHaveStyle({ overflow: "hidden" });
+  expect(within(cuadro).getByText("Sola")).toBeInTheDocument();
+});
+
+test("en un video o un GIF el cuadro es el fotograma de la entrada, quieto, y en una imagen es la imagen", async () => {
+  stubPlayback();
+  const user = userEvent.setup();
+  render(<Editor />);
+
+  await addMedium(user, fileWithDuration("clip.mp4", "video/mp4", 10));
+  await addMedium(user, fileWithDuration("anim.gif", "image/gif", 4));
+  await addMedium(user, new File(["imagen"], "foto.png", { type: "image/png" }));
+
+  let scene = await addSceneFrom(user, "clip.mp4");
+  let cuadro = within(scene).getByRole("region", { name: "Cuadro" });
+  let video = cuadro.querySelector("video");
+  expect(video).not.toBeNull();
+  expect(cuadro.querySelector("img")).toBeNull();
+  expect(video).not.toHaveAttribute("autoplay");
+  expect(video).toHaveProperty("paused", true);
+  expect(video).toHaveProperty("currentTime", 0);
+  expect(video).toHaveProperty("muted", true);
+  expect(video).toHaveProperty("loop", false);
+  expect(video).not.toHaveAttribute("controls");
+  expect(video).toHaveStyle({ objectFit: "cover", objectPosition: "center" });
+
+  scene = await addSceneFrom(user, "anim.gif");
+  await chooseCut(user, await openScene(user, "clip.mp4"), "fundido");
+  scene = await openScene(user, "anim.gif");
+  cuadro = within(scene).getByRole("region", { name: "Cuadro" });
+  video = cuadro.querySelector("video");
+  expect(video).not.toBeNull();
+  expect(cuadro.querySelector("img")).toBeNull();
+  expect(video).not.toHaveAttribute("autoplay");
+  expect(video).toHaveProperty("paused", true);
+  expect(video).toHaveProperty("currentTime", 0);
+  expect(within(cuadro).queryByRole("img")).not.toBeInTheDocument();
+
+  scene = await addSceneFrom(user, "foto.png");
+  cuadro = within(scene).getByRole("region", { name: "Cuadro" });
+  expect(within(cuadro).getByRole("img", { name: "foto.png" })).toBeInTheDocument();
+  expect(cuadro.querySelector("video")).toBeNull();
+});
+
+test("el recorrido no está en Escena y no mueve el cuadro", async () => {
+  stubPlayback();
+  const user = userEvent.setup();
+  render(<Editor />);
+
+  await addMedium(user, fileWithDuration("clip.mp4", "video/mp4", 10));
+  await addMedium(user, new File(["imagen"], "foto.png", { type: "image/png" }));
+  await addSceneFrom(user, "clip.mp4");
+  await addSceneFrom(user, "foto.png");
+  const first = await openScene(user, "clip.mp4");
+  await chooseCut(user, first, "fundido");
+
+  expect(within(first).queryByRole("slider", { name: "Recorrer" })).not.toBeInTheDocument();
+  expect(within(first).queryByRole("slider")).not.toBeInTheDocument();
+
+  const video = within(first).getByRole("region", { name: "Cuadro" }).querySelector("video");
+  expect(video).toHaveProperty("currentTime", 0);
+  expect(video).toHaveProperty("paused", true);
+  fireEvent.input(within(first).getByRole("spinbutton", { name: "Tiempo del fundido" }), {
+    target: { value: "2" },
+  });
+  expect(video).toHaveProperty("currentTime", 0);
+  expect(video).toHaveProperty("paused", true);
+  expect(
+    within(within(first).getByRole("region", { name: "Cuadro" })).queryByRole("img", {
+      name: "foto.png",
+    }),
+  ).not.toBeInTheDocument();
+});
+
+test("sin escena elegida, el cuadro no tiene nada que mostrar", async () => {
+  const user = userEvent.setup();
+  render(<Editor />);
+
+  await user.click(screen.getByRole("button", { name: "Escena" }));
+  const scene = screen.getByRole("region", { name: "Escena" });
+  expect(within(scene).getByText("No hay una escena que editar.")).toBeInTheDocument();
+  const cuadro = within(scene).getByRole("region", { name: "Cuadro" });
+  expect(cuadro).toHaveStyle({ width: "120px", aspectRatio: "9 / 16" });
+  expect(cuadro).toBeEmptyDOMElement();
+  expect(cuadro.parentElement).toHaveStyle({ display: "flex", flexDirection: "row" });
+});
+
+test("el bloque Fundido está arriba de los textos, elige el corte con la escena siguiente y en la última no está", async () => {
+  const user = userEvent.setup();
+  render(<Editor />);
+
+  await addMedium(user, new File(["una"], "foto.png", { type: "image/png" }));
+  await addMedium(user, new File(["otra"], "otra.png", { type: "image/png" }));
+  await addSceneFrom(user, "foto.png");
+  await addSceneFrom(user, "otra.png");
+
+  const scene = await openScene(user, "foto.png");
+  const fundido = within(scene).getByRole("group", { name: "Fundido" });
+  const textos = within(scene).getByRole("heading", { name: "Textos" });
+  expect(fundido.compareDocumentPosition(textos) & Node.DOCUMENT_POSITION_FOLLOWING).toBe(
+    Node.DOCUMENT_POSITION_FOLLOWING,
+  );
+  const cut = within(fundido).getByRole("combobox", { name: "Fundido" });
+  expect(within(cut).getAllByRole("option").map((option) => option.textContent)).toEqual([
+    "Corte directo",
+    "Fundido",
+  ]);
+  expect(cut).toHaveValue("corte directo");
+  expect(within(fundido).queryByRole("spinbutton", { name: "Tiempo del fundido" })).not.toBeInTheDocument();
+
+  await user.selectOptions(cut, within(cut).getByRole("option", { name: "Fundido" }));
+  expect(within(fundido).getByRole("spinbutton", { name: "Tiempo del fundido" })).toHaveValue(0.5);
+  expect(screen.getByText("El short dura 5.5 s")).toBeInTheDocument();
+
+  const second = await openScene(user, "otra.png");
+  expect(within(second).getByText("fundido")).toBeInTheDocument();
+  expect(within(second).queryByRole("group", { name: "Fundido" })).not.toBeInTheDocument();
+  expect(within(second).queryByRole("spinbutton", { name: "Tiempo del fundido" })).not.toBeInTheDocument();
 });
 
 test("sin una imagen o un video no se añade una escena", async () => {
@@ -1105,9 +1292,10 @@ test("añadir un texto lo crea en el centro, en blanco, alineado al centro y a o
   const items = within(within(scene).getByRole("list", { name: "Textos" })).getAllByRole("listitem");
   expect(items).toHaveLength(1);
   expect(within(items[0]).getByLabelText("Contenido")).toHaveValue("Texto");
-  expect(within(items[0]).getByRole("spinbutton", { name: "Horizontal" })).toHaveValue(0.5);
-  expect(within(items[0]).getByRole("spinbutton", { name: "Vertical" })).toHaveValue(0.5);
-  expect(within(items[0]).getByRole("spinbutton", { name: "Tamaño" })).toHaveValue(0.08);
+  expect(within(items[0]).getByRole("spinbutton", { name: "Horizontal" })).toHaveValue(50);
+  expect(within(items[0]).getByRole("spinbutton", { name: "Vertical" })).toHaveValue(50);
+  expect(within(items[0]).getByRole("spinbutton", { name: "Tamaño" })).toHaveValue(8);
+  expect(within(scene).getByRole("spinbutton", { name: "Duración" })).toHaveValue(3);
   expect(within(items[0]).getByLabelText("Color")).toHaveValue("#ffffff");
   expect(within(items[0]).getByRole("combobox", { name: "Alineación" })).toHaveValue("center");
 
@@ -1164,15 +1352,15 @@ test("editar contenido, posición, tamaño, color y alineación se ve en el cuad
 
   const horizontal = within(item).getByRole("spinbutton", { name: "Horizontal" });
   await user.clear(horizontal);
-  await user.type(horizontal, "0.25");
+  await user.type(horizontal, "25");
 
   const vertical = within(item).getByRole("spinbutton", { name: "Vertical" });
   await user.clear(vertical);
-  await user.type(vertical, "0.75");
+  await user.type(vertical, "75");
 
   const size = within(item).getByRole("spinbutton", { name: "Tamaño" });
   await user.clear(size);
-  await user.type(size, "0.12");
+  await user.type(size, "12");
 
   const color = within(item).getByLabelText("Color");
   fireEvent.input(color, { target: { value: "#2244aa" } });
@@ -1193,12 +1381,46 @@ test("editar contenido, posición, tamaño, color y alineación se ve en el cuad
   await user.clear(size);
   await user.type(size, "0");
   await user.tab();
-  expect(size).toHaveValue(0.12);
+  expect(size).toHaveValue(12);
   expect(overlay).toHaveStyle({ fontSize: "12cqh" });
 
-  fireEvent.input(size, { target: { value: "-0.1" } });
-  expect(size).toHaveValue(0.12);
+  fireEvent.input(size, { target: { value: "-1" } });
+  expect(size).toHaveValue(12);
   expect(overlay).toHaveStyle({ fontSize: "12cqh" });
+});
+
+test("la posición puede caer fuera de 0 a 100, el tamaño admite decimales y la duración y el fundido siguen en segundos", async () => {
+  const user = userEvent.setup();
+  render(<Editor />);
+
+  await addMedium(user, new File(["una"], "foto.png", { type: "image/png" }));
+  await addMedium(user, new File(["otra"], "otra.png", { type: "image/png" }));
+  await addSceneFrom(user, "foto.png");
+  await addSceneFrom(user, "otra.png");
+  const scene = await openScene(user, "foto.png");
+  await chooseCut(user, scene, "fundido");
+  expect(within(scene).getByRole("spinbutton", { name: "Duración" })).toHaveValue(3);
+  expect(within(scene).getByRole("spinbutton", { name: "Tiempo del fundido" })).toHaveValue(0.5);
+
+  await user.click(within(scene).getByRole("button", { name: "Añadir texto" }));
+  const item = within(scene).getByRole("listitem");
+  const horizontal = within(item).getByRole("spinbutton", { name: "Horizontal" });
+  const vertical = within(item).getByRole("spinbutton", { name: "Vertical" });
+  const size = within(item).getByRole("spinbutton", { name: "Tamaño" });
+  await user.clear(horizontal);
+  await user.type(horizontal, "-10");
+  await user.clear(vertical);
+  await user.type(vertical, "120");
+  await user.clear(size);
+  await user.type(size, "12.5");
+
+  const overlay = within(within(scene).getByRole("region", { name: "Cuadro" })).getByText("Texto");
+  expect(horizontal).toHaveValue(-10);
+  expect(vertical).toHaveValue(120);
+  expect(size).toHaveValue(12.5);
+  expect(overlay).toHaveStyle({ left: "-10%", top: "120%", fontSize: "12.5cqh" });
+  expect(within(scene).getByRole("spinbutton", { name: "Duración" })).toHaveValue(3);
+  expect(within(scene).getByRole("spinbutton", { name: "Tiempo del fundido" })).toHaveValue(0.5);
 });
 
 test("reordenar los textos cambia el orden de la lista y el apilado en el cuadro", async () => {
@@ -1288,11 +1510,11 @@ test("al volver, los textos de la escena siguen con su contenido, posición, tam
   await user.clear(within(items[1]).getByLabelText("Contenido"));
   await user.type(within(items[1]).getByLabelText("Contenido"), "Frente");
   await user.clear(within(items[1]).getByRole("spinbutton", { name: "Horizontal" }));
-  await user.type(within(items[1]).getByRole("spinbutton", { name: "Horizontal" }), "0.3");
+  await user.type(within(items[1]).getByRole("spinbutton", { name: "Horizontal" }), "30");
   await user.clear(within(items[1]).getByRole("spinbutton", { name: "Vertical" }));
-  await user.type(within(items[1]).getByRole("spinbutton", { name: "Vertical" }), "0.8");
+  await user.type(within(items[1]).getByRole("spinbutton", { name: "Vertical" }), "80");
   await user.clear(within(items[1]).getByRole("spinbutton", { name: "Tamaño" }));
-  await user.type(within(items[1]).getByRole("spinbutton", { name: "Tamaño" }), "0.1");
+  await user.type(within(items[1]).getByRole("spinbutton", { name: "Tamaño" }), "10");
   fireEvent.input(within(items[1]).getByLabelText("Color"), { target: { value: "#ff00aa" } });
   await user.selectOptions(within(items[1]).getByRole("combobox", { name: "Alineación" }), "Derecha");
 
@@ -1307,9 +1529,9 @@ test("al volver, los textos de la escena siguen con su contenido, posición, tam
   expect(items).toHaveLength(2);
   expect(within(items[0]).getByLabelText("Contenido")).toHaveValue("Fondo");
   expect(within(items[1]).getByLabelText("Contenido")).toHaveValue("Frente");
-  expect(within(items[1]).getByRole("spinbutton", { name: "Horizontal" })).toHaveValue(0.3);
-  expect(within(items[1]).getByRole("spinbutton", { name: "Vertical" })).toHaveValue(0.8);
-  expect(within(items[1]).getByRole("spinbutton", { name: "Tamaño" })).toHaveValue(0.1);
+  expect(within(items[1]).getByRole("spinbutton", { name: "Horizontal" })).toHaveValue(30);
+  expect(within(items[1]).getByRole("spinbutton", { name: "Vertical" })).toHaveValue(80);
+  expect(within(items[1]).getByRole("spinbutton", { name: "Tamaño" })).toHaveValue(10);
   expect(within(items[1]).getByLabelText("Color")).toHaveValue("#ff00aa");
   expect(within(items[1]).getByRole("combobox", { name: "Alineación" })).toHaveValue("right");
 
@@ -2100,13 +2322,13 @@ test("al reemplazar se quedan los textos y la narración, y terminan con la esce
   await user.clear(contents[0]);
   await user.type(contents[0], "Arriba");
   fireEvent.input(within(scene).getAllByRole("spinbutton", { name: "Horizontal" })[0], {
-    target: { value: "0.2" },
+    target: { value: "20" },
   });
   fireEvent.input(within(scene).getAllByRole("spinbutton", { name: "Vertical" })[0], {
-    target: { value: "0.3" },
+    target: { value: "30" },
   });
   fireEvent.input(within(scene).getAllByRole("spinbutton", { name: "Tamaño" })[0], {
-    target: { value: "0.15" },
+    target: { value: "15" },
   });
   fireEvent.input(within(scene).getAllByLabelText("Color")[0], { target: { value: "#ff0000" } });
   await user.selectOptions(within(scene).getAllByRole("combobox", { name: "Alineación" })[0], "right");
@@ -2129,16 +2351,20 @@ test("al reemplazar se quedan los textos y la narración, y terminan con la esce
   const frame = within(scene).getByRole("region", { name: "Cuadro" });
   expect(frame.querySelector("video")).toHaveProperty("muted", true);
   expect(frame.querySelector("video")).toHaveProperty("loop", false);
-  expect(within(frame).getByText("Arriba")).toBeInTheDocument();
+  expect(within(frame).getByText("Arriba")).toHaveStyle({
+    left: "20%",
+    top: "30%",
+    fontSize: "15cqh",
+  });
   expect(within(frame).getByText("Abajo")).toBeInTheDocument();
   const stacked = within(frame).getAllByText(/Arriba|Abajo/);
   expect(stacked.map((node) => node.textContent)).toEqual(["Arriba", "Abajo"]);
 
   expect(within(scene).getAllByRole("textbox", { name: "Contenido" })[0]).toHaveValue("Arriba");
   expect(within(scene).getAllByRole("textbox", { name: "Contenido" })[1]).toHaveValue("Abajo");
-  expect(within(scene).getAllByRole("spinbutton", { name: "Horizontal" })[0]).toHaveValue(0.2);
-  expect(within(scene).getAllByRole("spinbutton", { name: "Vertical" })[0]).toHaveValue(0.3);
-  expect(within(scene).getAllByRole("spinbutton", { name: "Tamaño" })[0]).toHaveValue(0.15);
+  expect(within(scene).getAllByRole("spinbutton", { name: "Horizontal" })[0]).toHaveValue(20);
+  expect(within(scene).getAllByRole("spinbutton", { name: "Vertical" })[0]).toHaveValue(30);
+  expect(within(scene).getAllByRole("spinbutton", { name: "Tamaño" })[0]).toHaveValue(15);
   expect(within(scene).getAllByLabelText("Color")[0]).toHaveValue("#ff0000");
   expect(within(scene).getAllByRole("combobox", { name: "Alineación" })[0]).toHaveValue("right");
   expect(within(scene).getByRole("combobox", { name: "Narración" })).not.toHaveValue("");
@@ -2227,7 +2453,7 @@ async function chooseCut(
   scene: HTMLElement,
   kind: "corte directo" | "fundido",
 ) {
-  const cut = within(scene).getByRole("combobox", { name: "Corte con la siguiente" });
+  const cut = within(scene).getByRole("combobox", { name: "Fundido" });
   const label = kind === "fundido" ? "Fundido" : "Corte directo";
   await user.selectOptions(cut, within(cut).getByRole("option", { name: label }));
 }
@@ -2253,7 +2479,7 @@ test("pasar un corte a fundido nace en medio segundo y la barra descuenta ese ti
   const second = await openScene(user, "otra.png");
   expect(within(second).getByText("fundido")).toBeInTheDocument();
   expect(within(second).getByText("3 s")).toBeInTheDocument();
-  expect(within(second).queryByRole("combobox", { name: "Corte con la siguiente" })).not.toBeInTheDocument();
+  expect(within(second).queryByRole("combobox", { name: "Fundido" })).not.toBeInTheDocument();
 });
 
 test("si la escena más corta dura menos de medio segundo, el fundido nace con esa duración", async () => {
@@ -2300,7 +2526,7 @@ test("el tiempo del fundido llega hasta la escena más corta y pedir más o cero
   expect(screen.getByText("El short dura 3 s")).toBeInTheDocument();
   fireEvent.blur(time);
   expect(time).toHaveValue(3);
-  expect(within(scene).getByRole("combobox", { name: "Corte con la siguiente" })).toHaveValue("fundido");
+  expect(within(scene).getByRole("combobox", { name: "Fundido" })).toHaveValue("fundido");
 });
 
 test("volver a corte directo olvida el tiempo y un fundido nuevo nace otra vez en medio segundo", async () => {
@@ -2347,7 +2573,7 @@ test("una escena puede estar en dos fundidos y la barra descuenta los dos", asyn
   scene = await openScene(user, "dos.png");
   expect(within(scene).getByText("fundido")).toBeInTheDocument();
   await chooseCut(user, scene, "fundido");
-  expect(within(scene).getByRole("combobox", { name: "Corte con la siguiente" })).toHaveValue("fundido");
+  expect(within(scene).getByRole("combobox", { name: "Fundido" })).toHaveValue("fundido");
   expect(within(scene).getByRole("spinbutton", { name: "Tiempo del fundido" })).toHaveValue(0.5);
 
   scene = await openScene(user, "tres.png");
@@ -2356,7 +2582,7 @@ test("una escena puede estar en dos fundidos y la barra descuenta los dos", asyn
   expect(screen.getByText("El short dura 8 s")).toBeInTheDocument();
 });
 
-test("en el solape se ven los dos medios y los textos, se oyen las dos narraciones y ningún video", async () => {
+test("un fundido no trae la escena vecina al cuadro, aunque el bloque se esté editando", async () => {
   stubPlayback();
   const user = userEvent.setup();
   render(<Editor />);
@@ -2388,38 +2614,31 @@ test("en el solape se ven los dos medios y los textos, se oyen las dos narracion
   expect(screen.getByText("El short dura 5.5 s")).toBeInTheDocument();
 
   const frame = within(scene).getByRole("region", { name: "Cuadro" });
-  const slider = within(scene).getByRole("slider", { name: "Recorrer" });
+  expect(within(frame).getByText("Sale")).toBeInTheDocument();
+  expect(within(frame).queryByText("Entra")).not.toBeInTheDocument();
+  expect(frame.querySelectorAll("video")).toHaveLength(1);
+  const video = frame.querySelector("video");
+  expect(video).toHaveProperty("muted", true);
+  expect(video).toHaveProperty("loop", false);
+  expect(frame.querySelectorAll("audio")).toHaveLength(1);
+  expect(frame.querySelector("audio")).toHaveProperty("muted", false);
 
-  fireEvent.change(slider, { target: { value: "0" } });
+  fireEvent.input(within(scene).getByRole("spinbutton", { name: "Tiempo del fundido" }), {
+    target: { value: "2" },
+  });
+  expect(screen.getByText("El short dura 4 s")).toBeInTheDocument();
   expect(within(frame).getByText("Sale")).toBeInTheDocument();
   expect(within(frame).queryByText("Entra")).not.toBeInTheDocument();
   expect(frame.querySelectorAll("video")).toHaveLength(1);
   expect(frame.querySelectorAll("audio")).toHaveLength(1);
-
-  fireEvent.change(slider, { target: { value: "2.75" } });
-  expect(within(frame).getByText("Sale")).toBeInTheDocument();
-  expect(within(frame).getByText("Entra")).toBeInTheDocument();
-  const videos = frame.querySelectorAll("video");
-  expect(videos).toHaveLength(2);
-  for (const video of videos) {
-    expect(video).toHaveProperty("muted", true);
-    expect(video).toHaveProperty("loop", false);
-  }
-  await waitFor(() => {
-    expect(videos[0].currentTime).toBeCloseTo(2.75, 2);
-    expect(videos[1].currentTime).toBeCloseTo(0.25, 2);
-  });
-  const audios = frame.querySelectorAll("audio");
-  expect(audios).toHaveLength(2);
-  for (const audio of audios) expect(audio).toHaveProperty("muted", false);
-
-  fireEvent.change(slider, { target: { value: "4" } });
-  expect(within(frame).queryByText("Sale")).not.toBeInTheDocument();
-  expect(within(frame).getByText("Entra")).toBeInTheDocument();
-  expect(frame.querySelectorAll("video")).toHaveLength(1);
-  expect(frame.querySelectorAll("audio")).toHaveLength(1);
+  expect(video?.parentElement).toHaveStyle({ opacity: "1" });
 
   const second = await openScene(user, "entra.mp4");
+  const secondFrame = within(second).getByRole("region", { name: "Cuadro" });
+  expect(within(secondFrame).getByText("Entra")).toBeInTheDocument();
+  expect(within(secondFrame).queryByText("Sale")).not.toBeInTheDocument();
+  expect(secondFrame.querySelectorAll("video")).toHaveLength(1);
+  expect(secondFrame.querySelectorAll("audio")).toHaveLength(1);
   expect(within(second).getByText("3 s")).toBeInTheDocument();
   expect(within(second).getByText("fundido")).toBeInTheDocument();
 });
@@ -2514,7 +2733,7 @@ test("añadir una escena no crea un fundido", async () => {
   expect(within(first).getByRole("spinbutton", { name: "Tiempo del fundido" })).toHaveValue(0.5);
   const middle = await openScene(user, "dos.png");
   expect(within(middle).getByText("fundido")).toBeInTheDocument();
-  expect(within(middle).getByRole("combobox", { name: "Corte con la siguiente" })).toHaveValue(
+  expect(within(middle).getByRole("combobox", { name: "Fundido" })).toHaveValue(
     "corte directo",
   );
 });
@@ -2632,7 +2851,7 @@ test("eliminar la primera conserva el corte siguiente y eliminar la última no c
   scene = await openScene(user, "dos.png");
   expect(within(scene).queryByText("fundido")).not.toBeInTheDocument();
   expect(within(scene).queryByText("corte directo")).not.toBeInTheDocument();
-  expect(within(scene).queryByRole("combobox", { name: "Corte con la siguiente" })).not.toBeInTheDocument();
+  expect(within(scene).queryByRole("combobox", { name: "Fundido" })).not.toBeInTheDocument();
   expect(screen.getByText("El short dura 3 s")).toBeInTheDocument();
 });
 
@@ -2737,7 +2956,7 @@ test("si el par se invierte el corte desaparece y el par nuevo nace en corte dir
   expect(screen.getByText("El short dura 6 s")).toBeInTheDocument();
 });
 
-test("el video del cuadro se detiene en la salida y no sigue hasta el final del archivo", async () => {
+test("el video del cuadro queda en la entrada y no sigue hasta el final del archivo", async () => {
   stubPlayback();
   const user = userEvent.setup();
   render(<Editor />);
@@ -2746,23 +2965,438 @@ test("el video del cuadro se detiene en la salida y no sigue hasta el final del 
   const scene = await addSceneFrom(user, "clip.mp4");
   const video = within(scene).getByRole("region", { name: "Cuadro" }).querySelector("video");
   expect(video).not.toBeNull();
-  const pause = vi.fn();
-  Object.defineProperty(video!, "pause", { configurable: true, value: pause });
-  let time = 2.9;
-  Object.defineProperty(video!, "currentTime", {
-    configurable: true,
-    get: () => time,
-    set: (value: number) => {
-      time = value;
-    },
-  });
-
-  fireEvent.timeUpdate(video!);
-  expect(pause).not.toHaveBeenCalled();
-
-  time = 3;
-  fireEvent.timeUpdate(video!);
-  expect(pause).toHaveBeenCalledTimes(1);
+  expect(video).toHaveProperty("paused", true);
+  expect(video).not.toHaveAttribute("autoplay");
+  expect(video).toHaveProperty("currentTime", 0);
   expect(screen.getByText("El short dura 3 s")).toBeInTheDocument();
   expect(within(scene).getByText("0 s")).toBeInTheDocument();
+  expect(within(scene).getByText("3 s")).toBeInTheDocument();
+
+  fireEvent.timeUpdate(video!);
+  expect(video).toHaveProperty("paused", true);
+  expect(video).toHaveProperty("currentTime", 0);
+});
+
+test("de arriba abajo están el cuadro, la lista de escenas y el recorrido", async () => {
+  const user = userEvent.setup();
+  render(<Editor />);
+
+  await user.click(screen.getByRole("button", { name: "Vista previa" }));
+  const preview = screen.getByRole("region", { name: "Vista previa" });
+  const cuadro = within(preview).getByRole("region", { name: "Cuadro" });
+  const list = within(preview).getByRole("list", { name: "Escenas" });
+  const recorrido = within(preview).getByRole("slider", { name: "Recorrido" });
+
+  expect(preview).toHaveStyle({ display: "flex", flexDirection: "column" });
+  expect(cuadro.compareDocumentPosition(list) & Node.DOCUMENT_POSITION_FOLLOWING).toBe(
+    Node.DOCUMENT_POSITION_FOLLOWING,
+  );
+  expect(list.compareDocumentPosition(recorrido) & Node.DOCUMENT_POSITION_FOLLOWING).toBe(
+    Node.DOCUMENT_POSITION_FOLLOWING,
+  );
+});
+
+test("el cuadro usa la altura del modo, conserva la proporción del short y no mide 120 px de ancho", async () => {
+  const user = userEvent.setup();
+  render(<Editor />);
+
+  await user.click(screen.getByRole("button", { name: "Vista previa" }));
+  const preview = screen.getByRole("region", { name: "Vista previa" });
+  const cuadro = within(preview).getByRole("region", { name: "Cuadro" });
+
+  expect(preview).toHaveStyle({ flexGrow: "1", minHeight: "0" });
+  expect(cuadro).toHaveStyle({
+    flexGrow: "1",
+    flexBasis: "auto",
+    minHeight: "0",
+    aspectRatio: "9 / 16",
+    width: "auto",
+    maxWidth: "100%",
+    alignSelf: "center",
+  });
+  expect(cuadro.style.width).not.toBe("120px");
+  expect(getComputedStyle(cuadro).width).not.toBe("120px");
+});
+
+function shownOpacity(node: HTMLElement): number {
+  let current: HTMLElement | null = node;
+  while (current && current.getAttribute("aria-label") !== "Cuadro") {
+    if (current.style.opacity !== "") return Number(current.style.opacity);
+    current = current.parentElement;
+  }
+  return Number(getComputedStyle(node).opacity);
+}
+
+function expectSilent(cuadro: HTMLElement) {
+  for (const video of cuadro.querySelectorAll("video")) {
+    expect(video).toHaveProperty("muted", true);
+    expect(video).toHaveProperty("paused", true);
+  }
+  for (const audio of cuadro.querySelectorAll("audio")) {
+    expect(audio.paused).toBe(true);
+  }
+}
+
+test("el cuadro muestra el momento del recorrido, fundido incluido, con los textos y el medio visual en silencio", async () => {
+  stubPlayback();
+  const user = userEvent.setup();
+  render(<Editor />);
+
+  await addMedium(user, fileWithDuration("sale.mp4", "video/mp4", 10));
+  await addMedium(user, fileWithDuration("entra.mp4", "video/mp4", 10));
+  await addMedium(user, fileWithDuration("voz.mp3", "audio/mpeg", 10));
+
+  let scene = await addSceneFrom(user, "sale.mp4");
+  await user.click(within(scene).getByRole("button", { name: "Añadir texto" }));
+  const saleText = within(scene).getByRole("textbox", { name: "Contenido" });
+  await user.clear(saleText);
+  await user.type(saleText, "Sale");
+  const narration = within(scene).getByRole("combobox", { name: "Narración" });
+  await user.selectOptions(narration, within(narration).getByRole("option", { name: "voz.mp3" }));
+
+  scene = await addSceneFrom(user, "entra.mp4");
+  await user.click(within(scene).getByRole("button", { name: "Añadir texto" }));
+  const entraText = within(scene).getByRole("textbox", { name: "Contenido" });
+  await user.clear(entraText);
+  await user.type(entraText, "Entra");
+
+  scene = await openScene(user, "sale.mp4");
+  await chooseCut(user, scene, "fundido");
+  fireEvent.input(within(scene).getByRole("spinbutton", { name: "Tiempo del fundido" }), {
+    target: { value: "1" },
+  });
+  expect(screen.getByText("El short dura 5 s")).toBeInTheDocument();
+
+  await user.click(screen.getByRole("button", { name: "Vista previa" }));
+  const cuadro = within(screen.getByRole("region", { name: "Vista previa" })).getByRole("region", {
+    name: "Cuadro",
+  });
+  const recorrido = screen.getByRole("slider", { name: "Recorrido" });
+
+  fireEvent.change(recorrido, { target: { value: "0" } });
+  expect(within(cuadro).getByText("Sale")).toBeInTheDocument();
+  expect(within(cuadro).queryByText("Entra")).not.toBeInTheDocument();
+  expect(cuadro.querySelectorAll("video")).toHaveLength(1);
+  expect(shownOpacity(within(cuadro).getByText("Sale"))).toBeCloseTo(1, 2);
+  expectSilent(cuadro);
+
+  fireEvent.change(recorrido, { target: { value: "2.5" } });
+  expect(within(cuadro).getByText("Sale")).toBeInTheDocument();
+  expect(within(cuadro).getByText("Entra")).toBeInTheDocument();
+  expect(cuadro.querySelectorAll("video")).toHaveLength(2);
+  expect(shownOpacity(within(cuadro).getByText("Sale"))).toBeCloseTo(0.5, 2);
+  expect(shownOpacity(within(cuadro).getByText("Entra"))).toBeCloseTo(0.5, 2);
+  expectSilent(cuadro);
+
+  fireEvent.change(recorrido, { target: { value: "4" } });
+  expect(within(cuadro).queryByText("Sale")).not.toBeInTheDocument();
+  expect(within(cuadro).getByText("Entra")).toBeInTheDocument();
+  expect(cuadro.querySelectorAll("video")).toHaveLength(1);
+  expect(shownOpacity(within(cuadro).getByText("Entra"))).toBeCloseTo(1, 2);
+  expectSilent(cuadro);
+});
+
+test("con la vista previa detenida, mover el recorrido deja el cuadro en el momento nuevo, en silencio, y sigue pausada", async () => {
+  stubPlayback();
+  const user = userEvent.setup();
+  render(<Editor />);
+
+  await addMedium(user, new File(["una"], "foto.png", { type: "image/png" }));
+  await addMedium(user, fileWithDuration("clip.mp4", "video/mp4", 10));
+  await addSceneFrom(user, "foto.png");
+  await addSceneFrom(user, "clip.mp4");
+
+  await user.click(screen.getByRole("button", { name: "Vista previa" }));
+  const preview = screen.getByRole("region", { name: "Vista previa" });
+  const cuadro = within(preview).getByRole("region", { name: "Cuadro" });
+  const recorrido = within(preview).getByRole("slider", { name: "Recorrido" });
+  expect(within(preview).queryByRole("button", { name: "Reproducir" })).not.toBeInTheDocument();
+  expect(within(preview).queryByRole("button", { name: "Pausar" })).not.toBeInTheDocument();
+
+  fireEvent.change(recorrido, { target: { value: "0" } });
+  expect(within(cuadro).getByRole("img", { name: "foto.png" })).toBeInTheDocument();
+  expect(cuadro.querySelector("video")).toBeNull();
+  expectSilent(cuadro);
+
+  fireEvent.change(recorrido, { target: { value: "4" } });
+  expect(within(cuadro).queryByRole("img", { name: "foto.png" })).not.toBeInTheDocument();
+  const video = cuadro.querySelector("video");
+  expect(video).not.toBeNull();
+  expect(video).toHaveProperty("paused", true);
+  expect(video).toHaveProperty("muted", true);
+  await waitFor(() => {
+    expect(video!.currentTime).toBeCloseTo(1, 2);
+  });
+  expect(recorrido).toHaveValue("4");
+  expectSilent(cuadro);
+  expect(within(preview).queryByRole("button", { name: "Reproducir" })).not.toBeInTheDocument();
+});
+
+test("un gesto que no cambia el momento no arranca la reproducción", async () => {
+  stubPlayback();
+  const user = userEvent.setup();
+  render(<Editor />);
+
+  await addMedium(user, fileWithDuration("clip.mp4", "video/mp4", 10));
+  await addSceneFrom(user, "clip.mp4");
+  await user.click(screen.getByRole("button", { name: "Vista previa" }));
+
+  const preview = screen.getByRole("region", { name: "Vista previa" });
+  const cuadro = within(preview).getByRole("region", { name: "Cuadro" });
+  const recorrido = within(preview).getByRole("slider", { name: "Recorrido" });
+  const video = cuadro.querySelector("video");
+  expect(video).not.toBeNull();
+  const play = vi.spyOn(video!, "play");
+
+  await user.click(cuadro);
+  fireEvent.change(recorrido, { target: { value: "0" } });
+
+  expect(play).not.toHaveBeenCalled();
+  expect(video).toHaveProperty("paused", true);
+  expect(video).toHaveProperty("muted", true);
+  expect(recorrido).toHaveValue("0");
+  expect(within(preview).queryByRole("button", { name: "Reproducir" })).not.toBeInTheDocument();
+  expect(within(preview).queryByRole("button", { name: "Pausar" })).not.toBeInTheDocument();
+  expectSilent(cuadro);
+});
+
+test("la lista sigue el orden del proyecto, con el encaje de siempre y el fotograma de la entrada", async () => {
+  stubPlayback();
+  const user = userEvent.setup();
+  const first = render(<Editor />);
+
+  await addMedium(user, fileWithDuration("anim.gif", "image/gif", 10));
+  await addMedium(user, fileWithDuration("clip.mp4", "video/mp4", 10));
+  await addMedium(user, new File(["imagen"], "foto.png", { type: "image/png" }));
+  await addSceneFrom(user, "foto.png");
+  await addSceneFrom(user, "clip.mp4");
+  await addSceneFrom(user, "anim.gif");
+
+  const stored = JSON.parse(localStorage.getItem("shorts-editor") ?? "{}");
+  stored.projects[0].scenes[1].entry = 2;
+  localStorage.setItem("shorts-editor", JSON.stringify(stored));
+  first.unmount();
+  render(<Editor />);
+
+  await user.click(screen.getByRole("button", { name: "Vista previa" }));
+  const list = within(screen.getByRole("region", { name: "Vista previa" })).getByRole("list", {
+    name: "Escenas",
+  });
+  const items = within(list).getAllByRole("listitem");
+  expect(items.map((item) => item.getAttribute("aria-label"))).toEqual([
+    "foto.png",
+    "clip.mp4",
+    "anim.gif",
+  ]);
+
+  const image = within(items[0]).getByRole("img", { name: "foto.png" });
+  expect(image).toHaveStyle({ objectFit: "cover", objectPosition: "center" });
+
+  const video = items[1].querySelector("video");
+  expect(video).not.toBeNull();
+  expect(items[1].querySelector("img")).toBeNull();
+  expect(video).toHaveProperty("paused", true);
+  expect(video).toHaveProperty("loop", false);
+  expect(video).toHaveStyle({ objectFit: "cover", objectPosition: "center" });
+  await waitFor(() => {
+    expect(video!.currentTime).toBeCloseTo(2, 2);
+  });
+
+  const gif = items[2].querySelector("video");
+  expect(gif).not.toBeNull();
+  expect(items[2].querySelector("img")).toBeNull();
+  expect(gif).toHaveProperty("paused", true);
+  expect(gif).toHaveProperty("loop", false);
+  expect(gif).not.toHaveAttribute("loop");
+  expect(gif).toHaveStyle({ objectFit: "cover", objectPosition: "center" });
+  await waitFor(() => {
+    expect(gif!.currentTime).toBeCloseTo(0, 2);
+  });
+});
+
+test("desde la lista no se añade, no se elimina y no se reordena, y no marca la escena del recorrido", async () => {
+  const user = userEvent.setup();
+  render(<Editor />);
+
+  await addMedium(user, new File(["una"], "uno.png", { type: "image/png" }));
+  await addMedium(user, new File(["dos"], "dos.png", { type: "image/png" }));
+  await addSceneFrom(user, "uno.png");
+  await addSceneFrom(user, "dos.png");
+  await user.click(screen.getByRole("button", { name: "Vista previa" }));
+
+  const preview = screen.getByRole("region", { name: "Vista previa" });
+  const list = within(preview).getByRole("list", { name: "Escenas" });
+  expect(within(preview).queryByRole("button", { name: "Añadir" })).not.toBeInTheDocument();
+  expect(within(preview).queryByRole("button", { name: "Eliminar" })).not.toBeInTheDocument();
+  expect(within(preview).queryByRole("button", { name: "Mover antes" })).not.toBeInTheDocument();
+  expect(within(preview).queryByRole("button", { name: "Mover después" })).not.toBeInTheDocument();
+  expect(within(preview).queryByRole("button", { name: "Quitar" })).not.toBeInTheDocument();
+
+  fireEvent.change(within(preview).getByRole("slider", { name: "Recorrido" }), {
+    target: { value: "4" },
+  });
+  for (const item of within(list).getAllByRole("listitem")) {
+    expect(item).not.toHaveAttribute("aria-current");
+    expect(item).not.toHaveAttribute("aria-selected");
+    expect(within(item).queryByRole("button", { pressed: true })).not.toBeInTheDocument();
+  }
+  expect(within(list).getAllByRole("listitem").map((item) => item.getAttribute("aria-label"))).toEqual([
+    "uno.png",
+    "dos.png",
+  ]);
+});
+
+test("elegir una escena lleva el recorrido al inicio de esa escena y el proyecto queda igual", async () => {
+  const user = userEvent.setup();
+  render(<Editor />);
+
+  await addMedium(user, new File(["una"], "uno.png", { type: "image/png" }));
+  await addMedium(user, new File(["dos"], "dos.png", { type: "image/png" }));
+  await addSceneFrom(user, "uno.png");
+  await addSceneFrom(user, "dos.png");
+  const scene = await openScene(user, "uno.png");
+  await chooseCut(user, scene, "fundido");
+  fireEvent.input(within(scene).getByRole("spinbutton", { name: "Tiempo del fundido" }), {
+    target: { value: "1" },
+  });
+  expect(screen.getByText("El short dura 5 s")).toBeInTheDocument();
+
+  await user.click(screen.getByRole("button", { name: "Vista previa" }));
+  const preview = screen.getByRole("region", { name: "Vista previa" });
+  const list = within(preview).getByRole("list", { name: "Escenas" });
+  const recorrido = within(preview).getByRole("slider", { name: "Recorrido" });
+  fireEvent.change(recorrido, { target: { value: "4" } });
+  expect(recorrido).toHaveValue("4");
+
+  await user.click(within(list).getByRole("button", { name: "dos.png" }));
+  expect(recorrido).toHaveValue("2");
+
+  const cuadro = within(preview).getByRole("region", { name: "Cuadro" });
+  expect(within(cuadro).getByRole("img", { name: "uno.png" })).toBeInTheDocument();
+  expect(within(cuadro).getByRole("img", { name: "dos.png" })).toBeInTheDocument();
+  expect(screen.getByText("El short dura 5 s")).toBeInTheDocument();
+  expect(within(list).getAllByRole("listitem").map((item) => item.getAttribute("aria-label"))).toEqual([
+    "uno.png",
+    "dos.png",
+  ]);
+
+  await user.click(within(list).getByRole("button", { name: "uno.png" }));
+  expect(recorrido).toHaveValue("0");
+  expect(within(cuadro).getByRole("img", { name: "uno.png" })).toBeInTheDocument();
+  expect(within(cuadro).queryByRole("img", { name: "dos.png" })).not.toBeInTheDocument();
+
+  const second = await openScene(user, "dos.png");
+  expect(within(second).getByText("fundido")).toBeInTheDocument();
+  expect(within(second).getByText("3 s")).toBeInTheDocument();
+  expect(screen.getByText("El short dura 5 s")).toBeInTheDocument();
+});
+
+test("un video muestra su recorte desde la entrada, y un GIF no se repite para llenar la escena", async () => {
+  stubPlayback();
+  const user = userEvent.setup();
+  const first = render(<Editor />);
+
+  await addMedium(user, fileWithDuration("anim.gif", "image/gif", 10));
+  await addMedium(user, fileWithDuration("clip.mp4", "video/mp4", 10));
+  await addSceneFrom(user, "clip.mp4");
+  await addSceneFrom(user, "anim.gif");
+
+  const stored = JSON.parse(localStorage.getItem("shorts-editor") ?? "{}");
+  stored.projects[0].scenes[0].entry = 2;
+  stored.projects[0].scenes[0].duration = 4;
+  localStorage.setItem("shorts-editor", JSON.stringify(stored));
+  first.unmount();
+  render(<Editor />);
+
+  await user.click(screen.getByRole("button", { name: "Vista previa" }));
+  const preview = screen.getByRole("region", { name: "Vista previa" });
+  const cuadro = within(preview).getByRole("region", { name: "Cuadro" });
+  const recorrido = within(preview).getByRole("slider", { name: "Recorrido" });
+  expect(screen.getByText("El short dura 7 s")).toBeInTheDocument();
+
+  fireEvent.change(recorrido, { target: { value: "1" } });
+  const video = cuadro.querySelector("video");
+  expect(video).not.toBeNull();
+  await waitFor(() => {
+    expect(video!.currentTime).toBeCloseTo(3, 2);
+  });
+  expect(video).toHaveProperty("muted", true);
+  expect(video).toHaveProperty("paused", true);
+  expect(video).toHaveProperty("loop", false);
+
+  fireEvent.change(recorrido, { target: { value: "6.5" } });
+  const gif = cuadro.querySelector("video");
+  expect(gif).not.toBeNull();
+  expect(gif).not.toBe(video);
+  expect(gif).toHaveProperty("loop", false);
+  expect(gif).not.toHaveAttribute("loop");
+  expect(gif).toHaveProperty("paused", true);
+  expect(gif).toHaveProperty("muted", true);
+  await waitFor(() => {
+    expect(gif!.currentTime).toBeCloseTo(2.5, 2);
+  });
+});
+
+test("el medio llena el cuadro, centrado, sin bandas, y el encaje no es un control", async () => {
+  stubPlayback();
+  const user = userEvent.setup();
+  render(<Editor />);
+
+  await addMedium(user, fileWithDuration("clip.mp4", "video/mp4", 10));
+  await addMedium(user, new File(["imagen"], "foto.png", { type: "image/png" }));
+  await addSceneFrom(user, "foto.png");
+  await addSceneFrom(user, "clip.mp4");
+  await user.click(screen.getByRole("button", { name: "Vista previa" }));
+
+  const preview = screen.getByRole("region", { name: "Vista previa" });
+  const cuadro = within(preview).getByRole("region", { name: "Cuadro" });
+  const recorrido = within(preview).getByRole("slider", { name: "Recorrido" });
+
+  fireEvent.change(recorrido, { target: { value: "0" } });
+  expect(within(cuadro).getByRole("img", { name: "foto.png" })).toHaveStyle({
+    width: "100%",
+    height: "100%",
+    objectFit: "cover",
+    objectPosition: "center",
+  });
+
+  fireEvent.change(recorrido, { target: { value: "4" } });
+  const video = cuadro.querySelector("video");
+  expect(video).not.toBeNull();
+  expect(video).toHaveStyle({
+    width: "100%",
+    height: "100%",
+    objectFit: "cover",
+    objectPosition: "center",
+  });
+  expect(within(preview).queryByRole("combobox", { name: "Encaje" })).not.toBeInTheDocument();
+  expect(within(preview).queryByRole("checkbox")).not.toBeInTheDocument();
+  expect(within(preview).queryByLabelText("Encaje")).not.toBeInTheDocument();
+
+  const composition = [...cuadro.querySelectorAll("div")].find(
+    (node) => node.style.width === "1080px" && node.style.height === "1920px",
+  );
+  expect(composition).toBeTruthy();
+});
+
+test("sin escenas, la duración es cero, la lista está vacía, el cuadro no tiene nada que mostrar y el recorrido no tiene otro momento", async () => {
+  const user = userEvent.setup();
+  render(<Editor />);
+
+  await user.click(screen.getByRole("button", { name: "Vista previa" }));
+  const preview = screen.getByRole("region", { name: "Vista previa" });
+  expect(within(screen.getByRole("banner")).getByText("El short dura 0 s")).toBeInTheDocument();
+  expect(within(preview).getByRole("list", { name: "Escenas" })).toBeEmptyDOMElement();
+
+  const cuadro = within(preview).getByRole("region", { name: "Cuadro" });
+  expect(cuadro.querySelector("img, video, canvas")).toBeNull();
+  expect(cuadro).toBeEmptyDOMElement();
+
+  const recorrido = within(preview).getByRole("slider", { name: "Recorrido" });
+  expect(recorrido).toHaveAttribute("min", "0");
+  expect(recorrido).toHaveAttribute("max", "0");
+  expect(recorrido).toHaveValue("0");
+  fireEvent.change(recorrido, { target: { value: "3" } });
+  expect(recorrido).toHaveValue("0");
+  expect(cuadro).toBeEmptyDOMElement();
 });

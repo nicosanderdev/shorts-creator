@@ -1,4 +1,14 @@
+import { Player, type PlayerRef } from "@remotion/player";
 import { useEffect, useRef, useState, type ChangeEvent, type CSSProperties } from "react";
+import {
+  ALTO_DEL_SHORT,
+  ANCHO_DEL_SHORT,
+  ComposicionDelShort,
+  duracionDelShortEnFotogramas,
+  FOTOGRAMAS_POR_SEGUNDO,
+  fotogramas,
+  type EscenaPlana,
+} from "./composicion";
 import "./index.css";
 
 const STORAGE_KEY = "shorts-editor";
@@ -29,6 +39,7 @@ const modes = [
   { id: "escenas", label: "Escenas" },
   { id: "escena", label: "Escena" },
   { id: "apariencia", label: "Apariencia" },
+  { id: "vista-previa", label: "Vista previa" },
 ] as const;
 
 type Mode = (typeof modes)[number]["id"];
@@ -405,6 +416,33 @@ function FractionField({
   );
 }
 
+function percentFromFraction(fraction: number): number {
+  const percent = fraction * 100;
+  if (!Number.isFinite(percent)) return percent;
+  return Number(percent.toPrecision(12));
+}
+
+function PercentField({
+  label,
+  value,
+  positiveOnly = false,
+  onChange,
+}: {
+  label: string;
+  value: number;
+  positiveOnly?: boolean;
+  onChange: (next: number) => void;
+}) {
+  return (
+    <FractionField
+      label={label}
+      value={percentFromFraction(value)}
+      positiveOnly={positiveOnly}
+      onChange={(next) => onChange(next / 100)}
+    />
+  );
+}
+
 function isHexColor(value: unknown): value is string {
   return typeof value === "string" && /^#[0-9a-f]{6}$/i.test(value);
 }
@@ -573,15 +611,6 @@ function shrinkFades(scenes: Scene[]): Scene[] {
   });
 }
 
-function scenePreviewTime(scenes: Scene[], index: number): number {
-  const start = sceneStarts(scenes)[index] ?? 0;
-  const scene = scenes[index];
-  if (!scene || index === 0) return start;
-  const fadeIn = fadeSeconds(scene);
-  if (fadeIn <= 0 || fadeIn >= scene.duration) return start;
-  return start + fadeIn;
-}
-
 function tiempoInicialDelFundido(left: number, right: number): number {
   const shorter = Math.min(left, right);
   return shorter < 0.5 ? shorter : 0.5;
@@ -598,15 +627,6 @@ function nextCutOf(
   return { kind: "corte directo", time: null };
 }
 
-function layerOpacity(local: number, duration: number, fadeIn: number, fadeOut: number): number {
-  let opacity = 1;
-  if (fadeIn > 0 && local < fadeIn) opacity = local / fadeIn;
-  if (fadeOut > 0 && duration - local < fadeOut) {
-    opacity = Math.min(opacity, (duration - local) / fadeOut);
-  }
-  return opacity;
-}
-
 type CapaCuadro = {
   sceneId: string;
   medium: Medium | null;
@@ -620,38 +640,35 @@ type CapaCuadro = {
   narrationUrl: string | null;
 };
 
-function capasDelCuadro(scenes: Scene[], library: Medium[], moment: number): CapaCuadro[] {
-  const starts = sceneStarts(scenes);
-  const length = shortSeconds(scenes);
-  const time = length === 0 ? 0 : Math.min(Math.max(moment, 0), length);
-  const layers: CapaCuadro[] = [];
-  scenes.forEach((scene, index) => {
-    const start = starts[index];
-    const end = start + scene.duration;
-    const isLast = index === scenes.length - 1;
-    if (!(time >= start && (time < end || (isLast && time === end)))) return;
-    const local = Math.min(Math.max(time - start, 0), scene.duration);
-    const fadeIn = index === 0 ? 0 : fadeSeconds(scene);
-    const fadeOut = index + 1 < scenes.length ? fadeSeconds(scenes[index + 1]) : 0;
-    const narration = scene.narrationId
-      ? library.find((item) => item.id === scene.narrationId && item.kind === "audio") ?? null
-      : null;
-    const medium = library.find((item) => item.id === scene.mediumId) ?? null;
-    layers.push({
-      sceneId: scene.id,
-      medium,
-      url: medium ? mediumUrl(medium.id) : null,
-      entry: scene.entry ?? 0,
-      local,
-      opacity: layerOpacity(local, scene.duration, fadeIn, fadeOut),
-      duration: scene.duration,
-      texts: scene.texts,
-      narrationId: narration?.id ?? null,
-      narrationUrl: narration ? mediumUrl(narration.id) : null,
-    });
-  });
-  return layers;
+function capaEnReposo(scene: Scene, library: Medium[]): CapaCuadro {
+  const medium = library.find((item) => item.id === scene.mediumId) ?? null;
+  const narration = scene.narrationId
+    ? library.find((item) => item.id === scene.narrationId && item.kind === "audio") ?? null
+    : null;
+  return {
+    sceneId: scene.id,
+    medium,
+    url: medium ? mediumUrl(medium.id) : null,
+    entry: scene.entry ?? 0,
+    local: 0,
+    opacity: 1,
+    duration: scene.duration,
+    texts: scene.texts,
+    narrationId: narration?.id ?? null,
+    narrationUrl: narration ? mediumUrl(narration.id) : null,
+  };
 }
+
+const cuadroStyle: CSSProperties = {
+  position: "relative",
+  containerType: "size",
+  width: 120,
+  aspectRatio: "9 / 16",
+  overflow: "hidden",
+  flexGrow: 0,
+  flexShrink: 0,
+  flexBasis: "120px",
+};
 
 const encaje: CSSProperties = {
   display: "block",
@@ -681,48 +698,24 @@ function textStyle(text: SceneText, index: number): CSSProperties {
 
 function MedioEnCuadro({ layer }: { layer: CapaCuadro }) {
   const videoRef = useRef<HTMLVideoElement | null>(null);
-  const exit = layer.entry + layer.duration;
 
   useEffect(() => {
     const video = videoRef.current;
-    if (!video) return;
-    const nextTime = layer.entry + layer.local;
-    if (!Number.isFinite(nextTime)) return;
+    if (!video || !Number.isFinite(layer.entry)) return;
+    if (!video.paused) video.pause();
     try {
-      video.currentTime = Math.min(nextTime, exit);
+      video.currentTime = layer.entry;
     } catch {
-      // A preview can seek only after the file has metadata.
+      // A still can seek only after the file has metadata.
     }
-    if (video.currentTime >= exit) {
-      video.pause();
-      return;
-    }
-    try {
-      const pending = video.play?.();
-      if (pending && typeof pending.catch === "function") pending.catch(() => {});
-    } catch {
-      // The preview plays when the browser allows it.
-    }
-  }, [layer.entry, layer.local, layer.url, exit]);
+  }, [layer.entry, layer.url]);
 
   if (!layer.medium || !layer.url) return null;
   if (layer.medium.kind === "imagen") {
     return <img src={layer.url} alt={layer.medium.name} style={encaje} />;
   }
   if (layer.medium.kind === "video") {
-    return (
-      <video
-        ref={videoRef}
-        src={layer.url}
-        muted
-        autoPlay
-        playsInline
-        style={encaje}
-        onTimeUpdate={(event) => {
-          if (event.currentTarget.currentTime >= exit) event.currentTarget.pause();
-        }}
-      />
-    );
+    return <video ref={videoRef} src={layer.url} muted playsInline style={encaje} />;
   }
   return null;
 }
@@ -814,11 +807,8 @@ function EscenaElegida({
   visualMedia,
   audioMedia,
   nextCut,
-  moment,
-  shortLength,
   onDuration,
   onReplace,
-  onScrub,
   onSetNextCut,
   onSetFadeTime,
   onSetNarration,
@@ -833,11 +823,8 @@ function EscenaElegida({
   visualMedia: Medium[];
   audioMedia: Medium[];
   nextCut: { kind: "corte directo" | "fundido"; time: number | null } | null;
-  moment: number;
-  shortLength: number;
   onDuration: (next: number) => void;
   onReplace: (mediumId: string) => void;
-  onScrub: (next: number) => void;
   onSetNextCut: (kind: "corte directo" | "fundido") => void;
   onSetFadeTime: (next: number) => void;
   onSetNarration: (narrationId: string | null) => void;
@@ -852,20 +839,7 @@ function EscenaElegida({
 
   return (
     <div className="escena-cuerpo" style={{ display: "flex", flexDirection: "row", alignItems: "flex-start", gap: "16px" }}>
-      <section
-        className="cuadro"
-        aria-label="Cuadro"
-        style={{
-          position: "relative",
-          containerType: "size",
-          aspectRatio: "9 / 16",
-          overflow: "hidden",
-          flexGrow: 2,
-          flexShrink: 1,
-          flexBasis: 0,
-          minWidth: 0,
-        }}
-      >
+      <section className="cuadro" aria-label="Cuadro" style={cuadroStyle}>
         {layers.map((layer) => (
           <div
             key={layer.sceneId}
@@ -916,39 +890,6 @@ function EscenaElegida({
         <p>{scene.duration} s</p>
         {scene.entry !== null ? <p>{scene.entry} s</p> : null}
         {scene.cutWithPrevious ? <p>{scene.cutWithPrevious}</p> : null}
-        {nextCut ? (
-          <label>
-            Corte con la siguiente
-            <select
-              value={nextCut.kind}
-              onChange={(event) =>
-                onSetNextCut(event.currentTarget.value === "fundido" ? "fundido" : "corte directo")
-              }
-            >
-              <option value="corte directo">Corte directo</option>
-              <option value="fundido">Fundido</option>
-            </select>
-          </label>
-        ) : null}
-        {nextCut?.kind === "fundido" && nextCut.time !== null ? (
-          <FractionField
-            label="Tiempo del fundido"
-            value={nextCut.time}
-            positiveOnly
-            onChange={onSetFadeTime}
-          />
-        ) : null}
-        <label>
-          Recorrer
-          <input
-            type="range"
-            min={0}
-            max={shortLength}
-            step="any"
-            value={moment}
-            onChange={(event) => onScrub(Number(event.currentTarget.value))}
-          />
-        </label>
         <label>
           Narración
           <select
@@ -963,6 +904,31 @@ function EscenaElegida({
             ))}
           </select>
         </label>
+        {nextCut ? (
+          <fieldset>
+            <legend>Fundido</legend>
+            <label>
+              Fundido
+              <select
+                value={nextCut.kind}
+                onChange={(event) =>
+                  onSetNextCut(event.currentTarget.value === "fundido" ? "fundido" : "corte directo")
+                }
+              >
+                <option value="corte directo">Corte directo</option>
+                <option value="fundido">Fundido</option>
+              </select>
+            </label>
+            {nextCut.kind === "fundido" && nextCut.time !== null ? (
+              <FractionField
+                label="Tiempo del fundido"
+                value={nextCut.time}
+                positiveOnly
+                onChange={onSetFadeTime}
+              />
+            ) : null}
+          </fieldset>
+        ) : null}
         <div className="textos">
           <div className="textos-cabecera">
             <h3>Textos</h3>
@@ -1000,17 +966,17 @@ function EscenaElegida({
                     onChange={(event) => onPatchText(text.id, { content: event.currentTarget.value })}
                   />
                 </label>
-                <FractionField
+                <PercentField
                   label="Horizontal"
                   value={text.x}
                   onChange={(next) => onPatchText(text.id, { x: next })}
                 />
-                <FractionField
+                <PercentField
                   label="Vertical"
                   value={text.y}
                   onChange={(next) => onPatchText(text.id, { y: next })}
                 />
-                <FractionField
+                <PercentField
                   label="Tamaño"
                   value={text.size}
                   positiveOnly
@@ -1047,15 +1013,202 @@ function EscenaElegida({
   );
 }
 
+function planoDeEscena(scene: Scene, index: number, library: Medium[]): EscenaPlana {
+  const medium = library.find((item) => item.id === scene.mediumId) ?? null;
+  const visual =
+    medium && medium.kind !== "audio" && mediumUrl(medium.id)
+      ? { kind: medium.kind, src: mediumUrl(medium.id) as string, name: medium.name }
+      : null;
+  const narration = scene.narrationId
+    ? library.find((item) => item.id === scene.narrationId && item.kind === "audio") ?? null
+    : null;
+  return {
+    id: scene.id,
+    duration: scene.duration,
+    fadeIn: index === 0 ? 0 : fadeSeconds(scene),
+    entry: scene.entry ?? 0,
+    visual,
+    texts: scene.texts,
+    narrationSrc: narration ? mediumUrl(narration.id) : null,
+  };
+}
+
+function FotogramaDeEntrada({ src, entry }: { src: string; entry: number }) {
+  const ref = useRef<HTMLVideoElement>(null);
+  useEffect(() => {
+    const video = ref.current;
+    if (!video) return;
+    const place = () => {
+      try {
+        video.currentTime = entry;
+      } catch {
+        // The still appears once the file can be seeked.
+      }
+      video.pause();
+    };
+    place();
+    video.addEventListener("loadedmetadata", place);
+    return () => video.removeEventListener("loadedmetadata", place);
+  }, [src, entry]);
+  return <video ref={ref} src={src} muted playsInline loop={false} style={encaje} />;
+}
+
+function VistaPrevia({
+  scenes,
+  library,
+  moment,
+  shortLength,
+  playing,
+  onScrub,
+  onPlay,
+  onPause,
+}: {
+  scenes: Scene[];
+  library: Medium[];
+  moment: number;
+  shortLength: number;
+  playing: boolean;
+  onScrub: (next: number) => void;
+  onPlay: () => void;
+  onPause: () => void;
+}) {
+  const playerRef = useRef<PlayerRef>(null);
+  const escenas = scenes.map((scene, index) => planoDeEscena(scene, index, library));
+  const durationInFrames = duracionDelShortEnFotogramas(escenas);
+  const frame =
+    durationInFrames === 0 ? 0 : Math.min(Math.max(fotogramas(moment), 0), durationInFrames - 1);
+
+  useEffect(() => {
+    const player = playerRef.current;
+    if (!player) return;
+    player.seekTo(frame);
+  }, [frame, durationInFrames]);
+
+  useEffect(() => {
+    const player = playerRef.current;
+    if (!player) return;
+    if (playing) player.play();
+    else player.pause();
+  }, [playing]);
+
+  return (
+    <section className="section vista-previa" aria-label="Vista previa" style={{ flexGrow: 1, minHeight: 0 }}>
+      <section
+        className="cuadro"
+        aria-label="Cuadro"
+        style={{
+          flexGrow: 1,
+          flexShrink: 1,
+          flexBasis: "auto",
+          minHeight: 0,
+          aspectRatio: "9 / 16",
+          width: "auto",
+          maxWidth: "100%",
+          alignSelf: "center",
+        }}
+      >
+        {durationInFrames > 0 ? (
+          <Player
+            ref={playerRef}
+            component={ComposicionDelShort}
+            inputProps={{ escenas }}
+            durationInFrames={durationInFrames}
+            compositionWidth={ANCHO_DEL_SHORT}
+            compositionHeight={ALTO_DEL_SHORT}
+            fps={FOTOGRAMAS_POR_SEGUNDO}
+            initialFrame={frame}
+            autoPlay={false}
+            controls={false}
+            clickToPlay={false}
+            doubleClickToFullscreen={false}
+            spaceKeyToPlayOrPause={false}
+            loop={false}
+            moveToBeginningWhenEnded={false}
+            defaultPremountInSeconds={0}
+            logLevel="error"
+            style={{ width: "100%", height: "100%" }}
+            errorFallback={({ error }) => <span>{error.message}</span>}
+          />
+        ) : null}
+      </section>
+      <ul aria-label="Escenas">
+        {escenas.map((escena, index) => {
+          const name = escena.visual?.name ?? "Escena";
+          return (
+            <li key={escena.id} aria-label={name}>
+              <button
+                type="button"
+                aria-label={name}
+                onClick={() => {
+                  onPause();
+                  onScrub(sceneStarts(scenes)[index] ?? 0);
+                }}
+              >
+                {escena.visual?.kind === "imagen" ? (
+                  <img src={escena.visual.src} alt={escena.visual.name} style={encaje} />
+                ) : null}
+                {escena.visual?.kind === "video" ? (
+                  <FotogramaDeEntrada src={escena.visual.src} entry={escena.entry} />
+                ) : null}
+              </button>
+            </li>
+          );
+        })}
+      </ul>
+      <label>
+        Recorrido
+        <input
+          type="range"
+          min={0}
+          max={shortLength}
+          step="any"
+          value={Math.min(moment, shortLength)}
+          onChange={(event) => {
+            const next = Math.min(Math.max(Number(event.currentTarget.value), 0), shortLength);
+            if (next === moment) return;
+            onPause();
+            onScrub(next);
+          }}
+        />
+      </label>
+      <button type="button" onClick={onPlay} disabled={playing}>
+        Reproducir
+      </button>
+      <button type="button" onClick={onPause} disabled={!playing}>
+        Pausar
+      </button>
+      <button type="button">Renderizar</button>
+    </section>
+  );
+}
+
 export function Editor() {
   const [user, setUser] = useState(openUser);
   const [mode, setMode] = useState<Mode>("escenas");
   const [chosenMediumId, setChosenMediumId] = useState<string | null>(null);
   const [selectedSceneId, setSelectedSceneId] = useState<string | null>(null);
   const [playhead, setPlayhead] = useState(0);
+  const [playing, setPlaying] = useState(false);
   const [apariencia, setApariencia] = useState(openApariencia);
   const [revision, setRevision] = useState(0);
   const project = user.projects[0];
+  const shortLength = shortSeconds(project.scenes);
+  const moment = Math.min(playhead, shortLength);
+
+  useEffect(() => {
+    if (!playing) return;
+    const id = window.setInterval(() => {
+      setPlayhead((current) => {
+        const next = Math.round((current + 0.1) * 10) / 10;
+        return next >= shortLength ? shortLength : next;
+      });
+    }, 100);
+    return () => window.clearInterval(id);
+  }, [playing, shortLength]);
+
+  useEffect(() => {
+    if (playing && moment >= shortLength) setPlaying(false);
+  }, [playing, moment, shortLength]);
   const visualMedia = user.library.filter(
     (medium) => medium.kind === "imagen" || medium.kind === "video",
   );
@@ -1063,8 +1216,6 @@ export function Editor() {
   const chosen =
     visualMedia.find((medium) => medium.id === chosenMediumId) ?? visualMedia[0] ?? null;
   const selectedScene = project.scenes.find((scene) => scene.id === selectedSceneId) ?? null;
-  const shortLength = shortSeconds(project.scenes);
-  const moment = Math.min(playhead, shortLength);
   const libraryRef = useRef(user.library);
   libraryRef.current = user.library;
   const editTicket = useRef(new Map<string, number>());
@@ -1114,9 +1265,7 @@ export function Editor() {
     const birth = await sceneBirth(chosen);
     if (!birth || !libraryRef.current.some((item) => item.id === mediumId)) return;
     const sceneId = crypto.randomUUID();
-    const start = shortSeconds(project.scenes);
     setSelectedSceneId(sceneId);
-    setPlayhead(start);
     setMode("escena");
     setUser((current) => {
       if (!current.library.some((item) => item.id === mediumId)) return current;
@@ -1482,7 +1631,6 @@ export function Editor() {
                     type="button"
                     onClick={() => {
                       setSelectedSceneId(scene.id);
-                      setPlayhead(scenePreviewTime(project.scenes, index));
                       setMode("escena");
                     }}
                   >
@@ -1519,15 +1667,12 @@ export function Editor() {
             <EscenaElegida
               scene={selectedScene}
               medium={user.library.find((item) => item.id === selectedScene.mediumId) ?? null}
-              layers={capasDelCuadro(project.scenes, user.library, moment)}
+              layers={[capaEnReposo(selectedScene, user.library)]}
               visualMedia={visualMedia}
               audioMedia={audioMedia}
               nextCut={nextCutOf(project.scenes, selectedScene.id)}
-              moment={moment}
-              shortLength={shortLength}
               onDuration={(next) => setDuration(selectedScene.id, next)}
               onReplace={(mediumId) => replaceVisual(selectedScene.id, mediumId)}
-              onScrub={setPlayhead}
               onSetNextCut={(kind) => setNextCut(selectedScene.id, kind)}
               onSetFadeTime={(next) => setFadeTime(selectedScene.id, next)}
               onSetNarration={(narrationId) => setNarration(selectedScene.id, narrationId)}
@@ -1537,9 +1682,30 @@ export function Editor() {
               onRemoveText={(textId) => removeText(selectedScene.id, textId)}
             />
           ) : (
-            <p>No hay una escena que editar.</p>
+            <div
+              className="escena-cuerpo"
+              style={{ display: "flex", flexDirection: "row", alignItems: "flex-start", gap: "16px" }}
+            >
+              <section className="cuadro" aria-label="Cuadro" style={cuadroStyle} />
+              <p>No hay una escena que editar.</p>
+            </div>
           )}
         </section>
+      ) : null}
+      {mode === "vista-previa" ? (
+        <VistaPrevia
+          scenes={project.scenes}
+          library={user.library}
+          moment={moment}
+          shortLength={shortLength}
+          playing={playing}
+          onScrub={setPlayhead}
+          onPlay={() => {
+            if (moment >= shortLength) return;
+            setPlaying(true);
+          }}
+          onPause={() => setPlaying(false)}
+        />
       ) : null}
       {mode === "apariencia" ? (
         <section className="section" aria-label="Apariencia">
