@@ -1,4 +1,4 @@
-import { useEffect, useState, type ChangeEvent, type CSSProperties } from "react";
+import { useEffect, useRef, useState, type ChangeEvent, type CSSProperties } from "react";
 import "./index.css";
 
 const STORAGE_KEY = "shorts-editor";
@@ -52,6 +52,7 @@ type Scene = {
   entry: number | null;
   cutWithPrevious: "corte directo" | null;
   texts: SceneText[];
+  narrationId: string | null;
 };
 
 type Project = {
@@ -169,6 +170,11 @@ function parseScene(value: unknown): Scene | null {
     if (!text) return null;
     texts.push(text);
   }
+  let narrationId: string | null;
+  if (record.narrationId === undefined || record.narrationId === null) narrationId = null;
+  else if (typeof record.narrationId === "string" && record.narrationId !== "") {
+    narrationId = record.narrationId;
+  } else return null;
   return {
     id: record.id,
     mediumId: record.mediumId,
@@ -176,6 +182,7 @@ function parseScene(value: unknown): Scene | null {
     entry,
     cutWithPrevious: record.cutWithPrevious === null ? null : "corte directo",
     texts,
+    narrationId,
   };
 }
 
@@ -481,6 +488,8 @@ const encaje: CSSProperties = {
 function SceneFrame({
   scene,
   medium,
+  audioMedia,
+  onSetNarration,
   onAddText,
   onPatchText,
   onMoveText,
@@ -488,12 +497,54 @@ function SceneFrame({
 }: {
   scene: Scene;
   medium: Medium | null;
+  audioMedia: Medium[];
+  onSetNarration: (narrationId: string | null) => void;
   onAddText: () => void;
   onPatchText: (textId: string, patch: Partial<Omit<SceneText, "id">>) => void;
   onMoveText: (textId: string, direction: -1 | 1) => void;
   onRemoveText: (textId: string) => void;
 }) {
   const url = medium ? mediumUrl(medium.id) : null;
+  const narration = scene.narrationId
+    ? audioMedia.find((audio) => audio.id === scene.narrationId) ?? null
+    : null;
+  const narrationUrl = narration ? mediumUrl(narration.id) : null;
+  const audioRef = useRef<HTMLAudioElement | null>(null);
+  const audioStopTimer = useRef<number | null>(null);
+
+  function clearAudioTimer() {
+    if (audioStopTimer.current !== null) {
+      window.clearTimeout(audioStopTimer.current);
+      audioStopTimer.current = null;
+    }
+  }
+
+  function scheduleAudioStop(audio: HTMLAudioElement) {
+    clearAudioTimer();
+    const remainingMs = Math.max(0, (scene.duration - audio.currentTime) * 1000);
+    audioStopTimer.current = window.setTimeout(() => {
+      audioStopTimer.current = null;
+      audio.pause();
+    }, remainingMs);
+  }
+
+  function syncAudioStop(audio: HTMLAudioElement) {
+    if (audio.currentTime >= scene.duration) {
+      clearAudioTimer();
+      audio.pause();
+      return;
+    }
+    scheduleAudioStop(audio);
+  }
+
+  useEffect(() => {
+    const audio = audioRef.current;
+    if (audio && !audio.paused && !audio.ended) {
+      syncAudioStop(audio);
+    }
+    return () => clearAudioTimer();
+  }, [scene.id, scene.duration, narration?.id]);
+
   return (
     <div className="escena-cuerpo" style={{ display: "flex", flexDirection: "row", alignItems: "flex-start", gap: "16px" }}>
       <section
@@ -515,6 +566,27 @@ function SceneFrame({
         ) : null}
         {medium && url && medium.kind === "video" ? (
           <video src={url} muted autoPlay playsInline style={encaje} />
+        ) : null}
+        {narration && narrationUrl ? (
+          <audio
+            ref={audioRef}
+            key={`${scene.id}:${narration.id}`}
+            src={narrationUrl}
+            autoPlay
+            loop={false}
+            onPlay={(event) => syncAudioStop(event.currentTarget)}
+            onPlaying={(event) => syncAudioStop(event.currentTarget)}
+            onTimeUpdate={(event) => {
+              if (event.currentTarget.currentTime >= scene.duration) {
+                clearAudioTimer();
+                event.currentTarget.pause();
+              }
+            }}
+            onWaiting={clearAudioTimer}
+            onStalled={clearAudioTimer}
+            onPause={clearAudioTimer}
+            onEnded={clearAudioTimer}
+          />
         ) : null}
         {scene.texts.map((text, index) => (
           <span
@@ -545,6 +617,20 @@ function SceneFrame({
         <p>{scene.duration} s</p>
         {scene.entry !== null ? <p>{scene.entry} s</p> : null}
         {scene.cutWithPrevious ? <p>{scene.cutWithPrevious}</p> : null}
+        <label>
+          Narración
+          <select
+            value={narration?.id ?? ""}
+            onChange={(event) => onSetNarration(event.currentTarget.value || null)}
+          >
+            <option value="">Sin narración</option>
+            {audioMedia.map((audio) => (
+              <option key={audio.id} value={audio.id}>
+                {audio.name}
+              </option>
+            ))}
+          </select>
+        </label>
         <div className="textos">
           <div className="textos-cabecera">
             <h3>Textos</h3>
@@ -640,6 +726,7 @@ export function Editor() {
   const visualMedia = user.library.filter(
     (medium) => medium.kind === "imagen" || medium.kind === "video",
   );
+  const audioMedia = user.library.filter((medium) => medium.kind === "audio");
   const chosen =
     visualMedia.find((medium) => medium.id === chosenMediumId) ?? visualMedia[0] ?? null;
   const selectedScene = project.scenes.find((scene) => scene.id === selectedSceneId) ?? null;
@@ -680,6 +767,7 @@ export function Editor() {
         entry: birth.entry,
         cutWithPrevious: currentProject.scenes.length > 0 ? "corte directo" : null,
         texts: [],
+        narrationId: null,
       };
       return {
         ...current,
@@ -707,6 +795,14 @@ export function Editor() {
         ],
       };
     });
+  }
+
+  function setNarration(sceneId: string, narrationId: string | null) {
+    if (narrationId !== null) {
+      const medium = user.library.find((item) => item.id === narrationId);
+      if (!medium || medium.kind !== "audio") return;
+    }
+    updateScene(sceneId, (scene) => ({ ...scene, narrationId }));
   }
 
   function addText(sceneId: string) {
@@ -872,6 +968,8 @@ export function Editor() {
             <SceneFrame
               scene={selectedScene}
               medium={user.library.find((item) => item.id === selectedScene.mediumId) ?? null}
+              audioMedia={audioMedia}
+              onSetNarration={(narrationId) => setNarration(selectedScene.id, narrationId)}
               onAddText={() => addText(selectedScene.id)}
               onPatchText={(textId, patch) => patchText(selectedScene.id, textId, patch)}
               onMoveText={(textId, direction) => moveText(selectedScene.id, textId, direction)}

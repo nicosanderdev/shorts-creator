@@ -1,6 +1,6 @@
 import { act, fireEvent, render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { afterEach, expect, test } from "vitest";
+import { afterEach, expect, test, vi } from "vitest";
 import { Editor } from "./Editor";
 
 const fileDurations = new WeakMap<File, number>();
@@ -56,6 +56,7 @@ function stubPlayback() {
 }
 
 afterEach(() => {
+  vi.useRealTimers();
   restorePlayback?.();
 });
 
@@ -330,7 +331,8 @@ test("una imagen nace en tres segundos, sin recorte, y llena el cuadro", async (
   expect(within(scene).getAllByRole("button").map((button) => button.textContent)).toEqual([
     "Añadir texto",
   ]);
-  expect(within(scene).queryByRole("combobox")).not.toBeInTheDocument();
+  expect(within(scene).getByRole("combobox", { name: "Narración" })).toHaveValue("");
+  expect(within(scene).getAllByRole("combobox")).toHaveLength(1);
   expect(within(scene).queryByRole("checkbox")).not.toBeInTheDocument();
   expect(screen.queryByRole("region", { name: "Escenas" })).not.toBeInTheDocument();
   expect(screen.queryByRole("region", { name: "Biblioteca" })).not.toBeInTheDocument();
@@ -1331,4 +1333,296 @@ test("una escena guardada antes sin textos se abre sin perder el proyecto", asyn
   const scene = await screen.findByRole("region", { name: "Escena" });
   expect(within(scene).getByText("foto.png")).toBeInTheDocument();
   expect(within(scene).getByRole("list", { name: "Textos" })).toBeEmptyDOMElement();
+});
+
+test("poner una narración elige un audio de la biblioteca y lo deja en esa escena", async () => {
+  stubPlayback();
+  const user = userEvent.setup();
+  render(<Editor />);
+
+  await user.click(screen.getByRole("button", { name: "Biblioteca" }));
+  const input = screen.getByLabelText("Incorporar");
+  await user.upload(input, new File(["imagen"], "foto.png", { type: "image/png" }));
+  await user.upload(input, fileWithDuration("video.mp4", "video/mp4", 6));
+  await user.upload(input, fileWithDuration("voz.mp3", "audio/mpeg", 5));
+
+  await user.click(screen.getByRole("button", { name: "Escenas" }));
+  const mediumChoice = screen.getByRole("combobox", { name: "Medio visual" });
+  await user.selectOptions(
+    mediumChoice,
+    within(mediumChoice).getByRole("option", { name: "foto.png" }),
+  );
+  await user.click(screen.getByRole("button", { name: "Añadir" }));
+
+  const scene = await screen.findByRole("region", { name: "Escena" });
+  expect(scene.querySelector("audio")).toBeNull();
+  expect(
+    within(scene).queryByLabelText(/volumen|inicio|bucle|repetir/i),
+  ).not.toBeInTheDocument();
+  expect(within(scene).queryByRole("checkbox")).not.toBeInTheDocument();
+
+  const narration = within(scene).getByRole("combobox", { name: "Narración" });
+  expect(narration).toHaveValue("");
+  expect(
+    within(narration)
+      .getAllByRole("option")
+      .map((option) => option.textContent),
+  ).toEqual(["Sin narración", "voz.mp3"]);
+
+  await user.selectOptions(narration, within(narration).getByRole("option", { name: "voz.mp3" }));
+
+  expect(narration).not.toHaveValue("");
+  const audio = scene.querySelector("audio");
+  expect(audio).not.toBeNull();
+  expect(audio?.getAttribute("src")).toMatch(/^blob:stub-/);
+  expect(audio).toHaveProperty("muted", false);
+  expect(audio).toHaveProperty("loop", false);
+  expect(audio).not.toHaveAttribute("loop");
+  expect(audio).not.toHaveAttribute("controls");
+  expect(screen.getByText("El short dura 3 s")).toBeInTheDocument();
+
+  await user.click(screen.getByRole("button", { name: "Biblioteca" }));
+  expect(
+    within(screen.getByRole("list", { name: "Medios" })).getByRole("listitem", {
+      name: "voz.mp3 audio",
+    }),
+  ).toBeInTheDocument();
+});
+
+test("otro audio sustituye a la narración, quitarla deja la escena en silencio y el audio sigue en la biblioteca", async () => {
+  stubPlayback();
+  const user = userEvent.setup();
+  render(<Editor />);
+
+  await user.click(screen.getByRole("button", { name: "Biblioteca" }));
+  const input = screen.getByLabelText("Incorporar");
+  await user.upload(input, fileWithDuration("video.mp4", "video/mp4", 6));
+  await user.upload(input, fileWithDuration("voz1.mp3", "audio/mpeg", 4));
+  await user.upload(input, fileWithDuration("voz2.mp3", "audio/mpeg", 4));
+
+  await user.click(screen.getByRole("button", { name: "Escenas" }));
+  await user.click(screen.getByRole("button", { name: "Añadir" }));
+
+  const scene = await screen.findByRole("region", { name: "Escena" });
+  const video = scene.querySelector("video");
+  expect(video).toHaveProperty("muted", true);
+  expect(scene.querySelector("audio")).toBeNull();
+
+  const narration = within(scene).getByRole("combobox", { name: "Narración" });
+  await user.selectOptions(narration, within(narration).getByRole("option", { name: "voz1.mp3" }));
+  const firstAudio = scene.querySelector("audio");
+  const firstSrc = firstAudio?.getAttribute("src");
+  expect(firstSrc).toBeTruthy();
+  expect(scene.querySelectorAll("audio")).toHaveLength(1);
+  expect(video).toHaveProperty("muted", true);
+
+  await user.selectOptions(narration, within(narration).getByRole("option", { name: "voz2.mp3" }));
+  const secondAudio = scene.querySelector("audio");
+  const secondSrc = secondAudio?.getAttribute("src");
+  expect(secondSrc).toBeTruthy();
+  expect(secondSrc).not.toBe(firstSrc);
+  expect(scene.querySelectorAll("audio")).toHaveLength(1);
+  expect(video).toHaveProperty("muted", true);
+
+  await user.selectOptions(
+    narration,
+    within(narration).getByRole("option", { name: "Sin narración" }),
+  );
+  expect(narration).toHaveValue("");
+  expect(scene.querySelector("audio")).toBeNull();
+  expect(video).toHaveProperty("muted", true);
+
+  await user.click(screen.getByRole("button", { name: "Biblioteca" }));
+  const library = screen.getByRole("list", { name: "Medios" });
+  expect(within(library).getByRole("listitem", { name: "voz1.mp3 audio" })).toBeInTheDocument();
+  expect(within(library).getByRole("listitem", { name: "voz2.mp3 audio" })).toBeInTheDocument();
+});
+
+test("el mismo audio puede estar en varias escenas y en un corte directo no sigue en la siguiente", async () => {
+  stubPlayback();
+  const user = userEvent.setup();
+  render(<Editor />);
+
+  await user.click(screen.getByRole("button", { name: "Biblioteca" }));
+  const input = screen.getByLabelText("Incorporar");
+  await user.upload(input, new File(["una"], "uno.png", { type: "image/png" }));
+  await user.upload(input, new File(["dos"], "dos.png", { type: "image/png" }));
+  await user.upload(input, new File(["tres"], "tres.png", { type: "image/png" }));
+  await user.upload(input, fileWithDuration("voz.mp3", "audio/mpeg", 4));
+
+  await user.click(screen.getByRole("button", { name: "Escenas" }));
+  let mediumChoice = screen.getByRole("combobox", { name: "Medio visual" });
+  await user.selectOptions(mediumChoice, within(mediumChoice).getByRole("option", { name: "uno.png" }));
+  await user.click(screen.getByRole("button", { name: "Añadir" }));
+  let scene = await screen.findByRole("region", { name: "Escena" });
+  let narration = within(scene).getByRole("combobox", { name: "Narración" });
+  await user.selectOptions(narration, within(narration).getByRole("option", { name: "voz.mp3" }));
+  const firstAudio = scene.querySelector("audio");
+  expect(firstAudio).not.toBeNull();
+
+  await user.click(screen.getByRole("button", { name: "Escenas" }));
+  mediumChoice = screen.getByRole("combobox", { name: "Medio visual" });
+  await user.selectOptions(mediumChoice, within(mediumChoice).getByRole("option", { name: "dos.png" }));
+  await user.click(screen.getByRole("button", { name: "Añadir" }));
+  scene = await screen.findByRole("region", { name: "Escena" });
+  expect(within(scene).getByText("corte directo")).toBeInTheDocument();
+  expect(within(scene).getByRole("combobox", { name: "Narración" })).toHaveValue("");
+  expect(scene.querySelector("audio")).toBeNull();
+
+  await user.click(screen.getByRole("button", { name: "Escenas" }));
+  mediumChoice = screen.getByRole("combobox", { name: "Medio visual" });
+  await user.selectOptions(mediumChoice, within(mediumChoice).getByRole("option", { name: "tres.png" }));
+  await user.click(screen.getByRole("button", { name: "Añadir" }));
+  scene = await screen.findByRole("region", { name: "Escena" });
+  expect(within(scene).getByText("corte directo")).toBeInTheDocument();
+  narration = within(scene).getByRole("combobox", { name: "Narración" });
+  await user.selectOptions(narration, within(narration).getByRole("option", { name: "voz.mp3" }));
+  const thirdAudio = scene.querySelector("audio");
+  expect(thirdAudio).not.toBeNull();
+  expect(thirdAudio).not.toBe(firstAudio);
+  expect(thirdAudio?.getAttribute("src")).toBe(firstAudio?.getAttribute("src"));
+
+  await user.click(screen.getByRole("button", { name: "Escenas" }));
+  await user.click(
+    within(screen.getByRole("list", { name: "Escenas" })).getByRole("button", { name: "uno.png" }),
+  );
+  scene = await screen.findByRole("region", { name: "Escena" });
+  narration = within(scene).getByRole("combobox", { name: "Narración" });
+  await user.selectOptions(
+    narration,
+    within(narration).getByRole("option", { name: "Sin narración" }),
+  );
+  expect(scene.querySelector("audio")).toBeNull();
+
+  await user.click(screen.getByRole("button", { name: "Escenas" }));
+  await user.click(
+    within(screen.getByRole("list", { name: "Escenas" })).getByRole("button", { name: "tres.png" }),
+  );
+  scene = await screen.findByRole("region", { name: "Escena" });
+  expect(scene.querySelector("audio")).not.toBeNull();
+});
+
+test("la narración termina cuando termina la escena y no se repite si acaba antes", async () => {
+  stubPlayback();
+  const user = userEvent.setup();
+  render(<Editor />);
+
+  await user.click(screen.getByRole("button", { name: "Biblioteca" }));
+  const input = screen.getByLabelText("Incorporar");
+  await user.upload(input, new File(["imagen"], "foto.png", { type: "image/png" }));
+  await user.upload(input, fileWithDuration("relato.mp3", "audio/mpeg", 10));
+
+  await user.click(screen.getByRole("button", { name: "Escenas" }));
+  await user.click(screen.getByRole("button", { name: "Añadir" }));
+
+  const scene = await screen.findByRole("region", { name: "Escena" });
+  const narration = within(scene).getByRole("combobox", { name: "Narración" });
+  await user.selectOptions(narration, within(narration).getByRole("option", { name: "relato.mp3" }));
+
+  const audio = scene.querySelector("audio")!;
+  expect(audio).not.toBeNull();
+  expect(audio).toHaveProperty("loop", false);
+  expect(audio).not.toHaveAttribute("loop");
+
+  const pause = vi.fn();
+  Object.defineProperty(audio, "pause", { configurable: true, value: pause });
+
+  let time = 2.9;
+  Object.defineProperty(audio, "currentTime", {
+    configurable: true,
+    get: () => time,
+    set: (value: number) => {
+      time = value;
+    },
+  });
+  fireEvent.timeUpdate(audio);
+  expect(pause).not.toHaveBeenCalled();
+
+  time = 3;
+  fireEvent.timeUpdate(audio);
+  expect(pause).toHaveBeenCalledTimes(1);
+
+  pause.mockClear();
+  time = 0;
+  vi.useFakeTimers();
+  fireEvent.play(audio);
+  act(() => {
+    vi.advanceTimersByTime(2999);
+  });
+  expect(pause).not.toHaveBeenCalled();
+  act(() => {
+    vi.advanceTimersByTime(1);
+  });
+  expect(pause).toHaveBeenCalledTimes(1);
+
+  pause.mockClear();
+  fireEvent.play(audio);
+  fireEvent.ended(audio);
+  act(() => {
+    vi.advanceTimersByTime(5000);
+  });
+  expect(pause).not.toHaveBeenCalled();
+});
+
+test("al volver, la narración sigue en la escena y una escena guardada sin narración se abre bien", async () => {
+  stubPlayback();
+  const user = userEvent.setup();
+  const first = render(<Editor />);
+
+  await user.click(screen.getByRole("button", { name: "Biblioteca" }));
+  const input = screen.getByLabelText("Incorporar");
+  await user.upload(input, new File(["imagen"], "foto.png", { type: "image/png" }));
+  await user.upload(input, fileWithDuration("voz.mp3", "audio/mpeg", 4));
+
+  await user.click(screen.getByRole("button", { name: "Escenas" }));
+  await user.click(screen.getByRole("button", { name: "Añadir" }));
+  let scene = await screen.findByRole("region", { name: "Escena" });
+  let narration = within(scene).getByRole("combobox", { name: "Narración" });
+  await user.selectOptions(narration, within(narration).getByRole("option", { name: "voz.mp3" }));
+  const expectedSrc = scene.querySelector("audio")?.getAttribute("src");
+  expect(expectedSrc).toBeTruthy();
+
+  first.unmount();
+  const second = render(<Editor />);
+
+  await user.click(
+    within(screen.getByRole("list", { name: "Escenas" })).getByRole("button", { name: "foto.png" }),
+  );
+  scene = await screen.findByRole("region", { name: "Escena" });
+  narration = within(scene).getByRole("combobox", { name: "Narración" });
+  expect(narration).not.toHaveValue("");
+  expect(within(narration).getByRole("option", { name: "voz.mp3" })).toHaveProperty("selected", true);
+  expect(scene.querySelector("audio")?.getAttribute("src")).toBe(expectedSrc);
+
+  second.unmount();
+  localStorage.setItem(
+    "shorts-editor",
+    JSON.stringify({
+      id: "u1",
+      library: [{ id: "m1", name: "foto.png", kind: "imagen" }],
+      projects: [
+        {
+          name: "Proyecto",
+          scenes: [
+            {
+              id: "s1",
+              mediumId: "m1",
+              duration: 3,
+              entry: null,
+              cutWithPrevious: null,
+              texts: [],
+            },
+          ],
+        },
+      ],
+    }),
+  );
+
+  render(<Editor />);
+  await user.click(
+    within(screen.getByRole("list", { name: "Escenas" })).getByRole("button", { name: "foto.png" }),
+  );
+  scene = await screen.findByRole("region", { name: "Escena" });
+  expect(within(scene).getByRole("combobox", { name: "Narración" })).toHaveValue("");
+  expect(scene.querySelector("audio")).toBeNull();
 });
